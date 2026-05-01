@@ -14,18 +14,49 @@ const projectRoot = process.cwd();
 const skillsRoot = path.join(repoRoot, "skills");
 const claudeDestDir = process.env.CLAUDE_SKILLS_DIR || path.join(os.homedir(), ".claude", "skills");
 const codexDestDir = process.env.CODEX_SKILLS_DIR || path.join(os.homedir(), ".agents", "skills");
+const projectSkillsDir = process.env.SNOWSIGN_PROJECT_SKILLS_DIR || path.join(projectRoot, ".agents", "skills");
 const mcpInstallDir = process.env.SNOWSIGN_MCP_DIR || path.join(projectRoot, ".snowsign", "mcp-repo");
 
 const scopeOptions = [
-  { label: "현재 프로젝트", value: "project", description: "이 프로젝트에서만 MCP를 사용합니다." },
-  { label: "내 계정 전역", value: "user", description: "내 계정의 모든 프로젝트에서 사용할 수 있게 등록합니다." },
-  { label: "원하는 경로", value: "custom", description: "스킬만 원하는 경로에 복사하고 MCP 자동 등록은 하지 않습니다." },
+  {
+    label: "현재 프로젝트",
+    value: "project",
+    mcpDescription: "이 프로젝트에 MCP 설정과 스킬을 설치합니다.",
+    skillDescription: "이 프로젝트 안에 스킬을 설치합니다.",
+  },
+  {
+    label: "내 계정 전역",
+    value: "user",
+    mcpDescription: "내 계정 전역에 MCP를 등록하고 스킬을 설치합니다.",
+    skillDescription: "내 계정의 기본 스킬 경로에 설치합니다.",
+  },
+  {
+    label: "원하는 경로",
+    value: "custom",
+    mcpDescription: "스킬을 원하는 경로에 복사하고 MCP 서버 파일 경로를 안내합니다.",
+    skillDescription: "스킬을 원하는 경로에 복사합니다.",
+  },
 ];
 
 const clientOptions = [
-  { label: "Codex", value: "codex", description: "Codex에서 SnowSign MCP를 사용합니다." },
-  { label: "Claude Code", value: "claude", description: "Claude Code에서 SnowSign MCP를 사용합니다." },
-  { label: "Codex + Claude Code", value: "both", description: "두 클라이언트에서 모두 사용합니다." },
+  {
+    label: "Codex",
+    value: "codex",
+    mcpDescription: "Codex용 MCP 설정과 Codex 스킬 경로를 사용합니다.",
+    skillDescription: "Codex 기본 스킬 경로를 사용합니다.",
+  },
+  {
+    label: "Claude Code",
+    value: "claude",
+    mcpDescription: "Claude Code용 MCP 설정과 Claude Code 스킬 경로를 사용합니다.",
+    skillDescription: "Claude Code 기본 스킬 경로를 사용합니다.",
+  },
+  {
+    label: "Codex + Claude Code",
+    value: "both",
+    mcpDescription: "두 클라이언트 모두에 MCP 설정과 스킬을 설치합니다.",
+    skillDescription: "두 클라이언트의 기본 스킬 경로에 설치합니다.",
+  },
 ];
 
 const setupOptions = [
@@ -73,9 +104,9 @@ function printUsage() {
 
 옵션:
   --project         현재 프로젝트에만 MCP 설정 생성
-  --claude          Claude Code 사용자 위치(~/.claude/skills)에 설치
-  --codex           Codex 사용자 위치(~/.agents/skills)에 설치
-  --both            Claude Code와 Codex 사용자 위치 양쪽에 설치
+  --claude          Claude Code 사용자 위치에 스킬 설치, 운영/전체는 MCP도 등록
+  --codex           Codex 사용자 위치에 스킬 설치, 운영/전체는 MCP도 등록
+  --both            Claude Code와 Codex 양쪽에 스킬 설치, 운영/전체는 MCP도 등록
   --all             모든 스킬 설치
   --scope=<범위>    project, user, custom 중 하나
   --client=<대상>   codex, claude, both 중 하나
@@ -562,14 +593,14 @@ async function chooseScope() {
         renderHeader(2, "설치 범위를 선택하세요.", `구성: ${setupSummary(state.setupMode)}`);
         writeln();
 
-        scopeOptions.forEach((option, index) => {
-          renderOption({
-            active: index === cursor,
-            checked: index === cursor,
-            label: option.label,
-            description: option.description,
-          });
+      scopeOptions.forEach((option, index) => {
+        renderOption({
+          active: index === cursor,
+          checked: index === cursor,
+          label: option.label,
+          description: scopeDescription(option),
         });
+      });
 
         renderHelp([
           ["↑/↓", "이동"],
@@ -600,14 +631,14 @@ async function chooseClient(scopeMode) {
         renderHeader(3, "사용할 클라이언트를 선택하세요.", `범위: ${scopeOptions.find((option) => option.value === scopeMode)?.label}`);
         writeln();
 
-        clientOptions.forEach((option, index) => {
-          renderOption({
-            active: index === cursor,
-            checked: index === cursor,
-            label: option.label,
-            description: option.description,
-          });
+      clientOptions.forEach((option, index) => {
+        renderOption({
+          active: index === cursor,
+          checked: index === cursor,
+          label: option.label,
+          description: clientDescription(option),
         });
+      });
 
         renderHelp([
           ["↑/↓", "이동"],
@@ -734,6 +765,10 @@ function installSkillToDir(skill, destDir, label) {
 }
 
 function installSkill(skill, targetMode) {
+  if (isProjectTarget(targetMode)) {
+    installSkillToDir(skill, projectSkillsDir, "현재 프로젝트");
+  }
+
   if (targetMode === "claude" || targetMode === "both") {
     installSkillToDir(skill, claudeDestDir, "Claude Code");
   }
@@ -775,6 +810,14 @@ function selectSetupSkills(skills, setupMode) {
 
 function setupIncludesMcp(setupMode) {
   return setupMode === "ops" || setupMode === "full";
+}
+
+function scopeDescription(option) {
+  return setupIncludesMcp(state.setupMode) ? option.mcpDescription : option.skillDescription;
+}
+
+function clientDescription(option) {
+  return setupIncludesMcp(state.setupMode) ? option.mcpDescription : option.skillDescription;
 }
 
 function commandExists(command) {
@@ -939,8 +982,8 @@ function saveApiKey(apiKey) {
       const next = current.replace(/^export SNOWSIGN_API_KEY=.*$/m, `export SNOWSIGN_API_KEY="${escapedKey}"`);
       fs.writeFileSync(rcFile, next);
       console.log(`API 키를 ${rcFile}에 업데이트했습니다.`);
-      console.log("현재 터미널에 바로 적용하려면 다음 명령을 실행하세요:");
-      console.log(`  export SNOWSIGN_API_KEY="${escapedKey}"`);
+      console.log("현재 터미널에 반영하려면 새 터미널을 열거나 셸 설정 파일을 다시 불러오세요.");
+      console.log(`  source ${rcFile}`);
       return;
     }
   }
@@ -961,8 +1004,8 @@ function saveApiKey(apiKey) {
   }
 
   console.log(`API 키를 ${rcFile}에 저장했습니다.`);
-  console.log("현재 터미널에 바로 적용하려면 다음 명령을 실행하세요:");
-  console.log(`  export SNOWSIGN_API_KEY="${escapedKey}"`);
+  console.log("현재 터미널에 반영하려면 새 터미널을 열거나 셸 설정 파일을 다시 불러오세요.");
+  console.log(`  source ${rcFile}`);
 }
 
 function askHidden(question) {
@@ -1075,6 +1118,8 @@ async function promptCustomDestDir() {
 }
 
 async function promptApiKey() {
+  if (!setupIncludesMcp(state.setupMode)) return;
+
   console.log();
   renderHeader(4, "SnowSign API 키를 입력하세요.", "필수");
 
@@ -1090,6 +1135,7 @@ async function promptApiKey() {
   }
 
   renderStatus("스노우싸인 웹 콘솔에서 조직관리 > API 키 > 새 API로 이동해 키를 발급하세요.");
+  renderStatus("입력한 API 키는 화면에 표시되지 않습니다.");
 
   while (true) {
     const apiKey = await askHidden("SnowSign API 키: ");
@@ -1119,6 +1165,10 @@ function printFooter(targetMode, mcpRows = []) {
 
   if (targetMode === "custom") {
     rows.push(["스킬 경로", state.customDestDir]);
+  }
+
+  if (isProjectTarget(targetMode) && !setupIncludesMcp(state.setupMode)) {
+    rows.push(["프로젝트 스킬", projectSkillsDir]);
   }
 
   rows.push(...mcpRows);
@@ -1153,10 +1203,8 @@ async function main() {
 
   const mcpRows = registerMcp(targetMode);
 
-  if (!isProjectTarget(targetMode)) {
-    for (const skill of selectedSkills) {
-      installSkill(skill, targetMode);
-    }
+  for (const skill of selectedSkills) {
+    installSkill(skill, targetMode);
   }
 
   printFooter(targetMode, mcpRows);
