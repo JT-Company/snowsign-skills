@@ -60,7 +60,11 @@ download_repo() {
   local tmp
   local root
 
-  if [ -z "${FORCE_REMOTE:-}" ] && [ -z "${SNOWSIGN_MCP_DIR:-}" ] && [ -f "$PROJECT_DIR/mcp/snowsign_mcp.mjs" ]; then
+  if [ -z "${FORCE_REMOTE:-}" ] \
+    && [ -z "${SNOWSIGN_MCP_DIR:-}" ] \
+    && [ -f "$PROJECT_DIR/mcp/snowsign_mcp.mjs" ] \
+    && [ -d "$PROJECT_DIR/skills/snowsign-integration-architect" ] \
+    && [ -f "$PROJECT_DIR/scripts/install.mjs" ]; then
     SERVER_FILE="$PROJECT_DIR/mcp/snowsign_mcp.mjs"
     chmod +x "$SERVER_FILE"
     echo "현재 프로젝트의 SnowSign MCP 서버 파일을 사용합니다."
