@@ -1,0 +1,7 @@
+interface:
+  display_name: "SnowSign API Reference"
+  short_description: "SnowSign Public API 연동 레퍼런스"
+  default_prompt: "Use $snowsign-api-reference to implement a SnowSign template contract creation flow."
+
+policy:
+  allow_implicit_invocation: true

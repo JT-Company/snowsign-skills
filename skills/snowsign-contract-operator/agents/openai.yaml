@@ -1,0 +1,7 @@
+interface:
+  display_name: "SnowSign Contract Operator"
+  short_description: "SnowSign 계약 업무를 API로 직접 처리"
+  default_prompt: "Use $snowsign-contract-operator to find completed contracts and summarize the results."
+
+policy:
+  allow_implicit_invocation: true
