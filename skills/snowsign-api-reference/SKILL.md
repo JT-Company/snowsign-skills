@@ -1,137 +1,152 @@
 ---
 name: snowsign-api-reference
-description: (개발) 스노우싸인 API 연동 구현, 요청/응답 스키마, 템플릿 변수, 에러 처리를 확인하는 참조형 스킬.
+description: 스노우싸인 API와 웹훅을 ERP, 자체 서비스, 자동화 워크플로우에 연동하도록 설계하고 구현 계획을 작성하는 개발/설계형 스킬.
 disable-model-invocation: false
-allowed-tools: "Read, Grep, Bash(curl *)"
+allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 ---
 
-# SnowSign API Reference
+# SnowSign API & Webhook Integration Architect
 
-SnowSign Public API 연동을 설계, 구현, 디버깅할 때 이 skill을 사용한다. 정확한 엔드포인트, 필드명, 상태값, 에러 코드는 반드시 [references/public-api-guide.md](references/public-api-guide.md)를 확인한 뒤 답한다.
+SnowSign Public API와 웹훅을 기존 ERP, 자체 서비스, 백오피스, 배치/자동화 스크립트에 연동할 때 사용한다. 이 스킬의 핵심은 구현이 아니라 설계다. 전체 작업 비중은 설계 80%, 구현 20%로 둔다.
+
+정확한 스펙은 항상 다음 문서를 확인한다.
+
+- API: [references/public-api-guide.md](references/public-api-guide.md)
+- Webhook: [references/webhook-guide.md](references/webhook-guide.md)
+
+## 역할
+
+사용자를 숙련된 요청자가 아니라 요구사항이 불완전한 클라이언트로 보고, 에이전트는 제품 완성도를 책임지는 PM 겸 설계자처럼 행동한다.
+
+- 현재 코드베이스와 업무 흐름을 먼저 이해한다.
+- 사용자의 요구를 그대로 구현하지 말고, 타겟 고객과 실제 사용자 여정을 상상해 검증한다.
+- 빠진 정책, 예외, 권한, 보안, 운영 리스크를 찾아 질문한다.
+- 부적절한 요구는 이유를 들어 재고를 요청하거나 대안을 제시한다.
+- 설계가 충분히 선명해지기 전에는 구현으로 넘어가지 않는다.
+
+## 적용 범위
+
+다음 작업에 이 스킬을 사용한다.
+
+- ERP/CRM/그룹웨어/자체 백오피스에 SnowSign 계약 생성, 발송, 상태 조회, 다운로드 기능 연동
+- 템플릿 기반 계약 생성 플로우 설계
+- 계약 완료, 취소, 만료, 참여자 서명 이벤트를 웹훅으로 받아 후속 업무 자동화
+- 내부 DB 상태와 SnowSign 계약 상태 동기화
+- 워크플로우 자동화 스크립트, 배치, 큐/잡 처리 설계
+- API Key, Webhook Secret, 로그, 재처리, 중복 이벤트, 장애 대응 정책 설계
 
 ## 빠른 기준
 
-- Base URL은 `https://api-snowsign.jtsnowball.com/public` 이고 실제 v1 호출은 `/v1/...` 경로를 붙인다.
-- 모든 요청에는 `X-API-Key` 헤더가 필요하다.
-- JSON 요청에는 `Content-Type: application/json`을 포함한다.
-- API Key는 최초 생성 시에만 확인할 수 있으므로 코드, 로그, 답변 예시에 실제 키를 노출하지 않는다.
-- API 제한은 API Key당 `100 requests / minute`이다. `429`가 나오면 재시도 간격을 둔다.
+- API Base URL: `https://api-snowsign.jtsnowball.com/public/v1`
+- API 인증: `X-API-Key`
+- Webhook 서명: `X-Webhook-Signature`, HMAC-SHA256(raw body, secret)
+- Webhook은 5초 안에 2xx를 응답하고 실제 처리는 비동기화한다.
+- API Key와 Webhook Secret은 코드, 로그, 답변 예시에 노출하지 않는다.
+- 계약 생성은 초안(`draft`) 생성이다. 참여자에게 보내려면 발송 API가 별도다.
+- 상태 변경 API와 실제 발송은 사용자 확인 또는 명확한 업무 트리거 없이는 실행하지 않는다.
 
-## 작업 흐름
+## 전체 프로세스
 
-1. 사용자가 원하는 작업이 일반 계약서 생성인지, 템플릿 기반 계약서 생성인지 먼저 구분한다.
-2. 정확한 요청/응답 스키마가 필요하면 `references/public-api-guide.md`에서 해당 제목을 검색한다.
-3. 계약 생성은 초안(`draft`)을 만드는 작업이고, 참여자에게 보내려면 별도로 발송 API를 호출해야 한다.
-4. 다운로드와 감사추적인증서 발급은 계약 상태가 `completed`일 때만 정상 동작한다고 가정한다.
-5. 에러 처리 코드는 `success: false`와 `error.code`를 기준으로 분기하도록 안내한다.
+### 1. 코드베이스와 현재 업무 분석
 
-## 자주 쓰는 호출
+이미 구현된 코드가 있으면 먼저 읽는다. 최소 확인 범위:
 
-```bash
-BASE_URL="https://api-snowsign.jtsnowball.com/public/v1"
+- 프레임워크, 라우팅, API client, DB 접근 계층, 배치/큐 구조
+- 인증/권한 모델과 조직/사용자/계약 데이터 모델
+- 기존 외부 연동 패턴, webhook handler, retry/idempotency 유틸
+- 환경변수/secret 관리, 로깅, 모니터링, 테스트 구조
+- 실제 수정 가능 파일과 영향 범위
 
-curl -X GET "$BASE_URL/contracts" \
-  -H "X-API-Key: $SNOWSIGN_API_KEY"
-```
+분석 없이 바로 API 호출 코드나 endpoint를 만들지 않는다.
 
-```bash
-curl -X POST "$BASE_URL/contracts" \
-  -H "X-API-Key: $SNOWSIGN_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "업무 위탁 계약서",
-    "signing_order": "parallel",
-    "participants": [
-      { "name": "홍길동", "email": "hong@example.com", "role": "signer" }
-    ]
-  }'
-```
+### 2. 요구사항 구체화
 
-```bash
-curl -X POST "$BASE_URL/contracts/{contract_id}/send" \
-  -H "X-API-Key: $SNOWSIGN_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{ "message": "계약서 검토 부탁드립니다." }'
-```
+사용자에게 필요한 질문을 짧게 반복한다. 질문은 구현 세부보다 제품/업무 결정을 우선한다.
+이미 발견한 사실은 제외하여 질문을 가능한 최소화해야 하며, 단숨에 모든 항목을 물어 사용자를 압도하지 말고, 자연스러운 의사소통 능력을 발휘해 점진적으로 정보를 확보한다.
+추상적이고 포괄적인 범위부터 확정해나간다.
 
-## 템플릿 기반 계약서
+필수 질문 축:
 
-템플릿으로 계약서를 만들 때는 `POST /v1/templates/{template_id}/create-contract`를 사용한다.
+- 누가 이 기능을 쓰는가: 관리자, 영업, HR, 고객, 자동 배치
+- 언제 계약을 생성/발송하는가: 수동 버튼, 상태 변경, 배치, 외부 이벤트
+- 어떤 데이터가 원천인가: ERP, CRM, 자체 DB, CSV, 사용자 입력
+- 템플릿을 쓰는가, 일반 계약을 생성하는가
+- 참여자 역할, 서명 순서, 보안 수단, 만료일 정책은 무엇인가
+- 완료/취소/거절/만료 후 내부 시스템 상태는 어떻게 바뀌는가
+- PDF/감사추적인증서는 저장하는가, 링크만 노출하는가
+- 실패/중복/재시도/부분 성공을 어떻게 처리할 것인가
 
-템플릿 연동에서 틀리기 쉬운 점:
+요구가 부적절하면 명확히 지적한다. 예: 서명 검증 없는 웹훅 처리, raw body 없이 HMAC 검증, 계약 발송 자동화에 승인 단계 없음, API Key를 클라이언트에 노출, 완료 이벤트를 DB 업데이트 없이 이메일 발송만 처리.
 
-- 먼저 `GET /v1/templates/{template_id}`로 `signers`와 `variables`를 확인한다.
-- `participants[].role`에는 임의 역할이 아니라 템플릿에 정의된 역할명(`role_name`)을 넣는다.
-- `variables` 객체의 키는 템플릿 변수명과 정확히 일치해야 한다.
-- 변수 타입 입력칸은 API 값이 PDF에 고정 텍스트로 렌더링되며, 서명자가 수정할 수 없다.
-- 동일 변수명이 여러 위치에 있어도 하나의 값으로 모두 치환된다.
-- 변수에 기본값이 있으면 API에서 값을 생략했을 때 기본값이 적용된다.
+### 3. 사용자 여정과 도메인 모델 설계
 
-템플릿 생성 예시:
+구현 전 다음과 같은 그림을 만든다.
 
-```json
-{
-  "title": "홍길동 근로계약서",
-  "participants": [
-    { "name": "홍길동", "email": "hong@example.com", "role": "근로자", "order": 1 },
-    { "name": "스노우싸인(주)", "email": "hr@snowsign.io", "role": "회사", "order": 2 }
-  ],
-  "variables": {
-    "계약시작일": "2025-02-01",
-    "급여": "3,500,000원"
-  }
-}
-```
+- 주요 사용자 여정: 생성, 발송, 서명 진행, 완료, 실패/취소, 재처리
+- 상태 전이: 내부 상태와 SnowSign 상태 매핑
+- 데이터 매핑: 내부 필드 -> SnowSign API 필드 -> 웹훅 payload -> 내부 업데이트
+- 권한/승인: 누가 생성/발송/취소/다운로드할 수 있는가
+- 운영 정책: 감사 로그, 재처리 화면, 알림, 모니터링
 
-## 상태와 후속 작업
+이 단계에서 설계가 불완전하면 구현 계획을 쓰지 않는다.
 
-계약 상태:
+### 4. 구현 기획문서 작성
 
-- `draft`: 초안, 아직 발송되지 않음
-- `pending`: 발송됨, 서명 대기
-- `in_progress`: 일부 참여자 서명 완료
-- `completed`: 모든 참여자 서명 완료
-- `cancelled`, `expired`, `rejected`: 취소, 만료, 거절
+설계가 충분히 구체화되면 마크다운 구현 기획문서를 작성한다. 문서는 엔지니어가 이 기획문서만으로 어떤 파일들을 어떻게 수정해야하는지 완전히 파악할 수 있도록 누락 없이 꼼꼼히 작성되어야 한다.
+단, 토큰 효율을 위해 문서 길이는 최대한 짧아야 하므로, 간결한 문체와 구조적 정리를 통해 높은 정보밀도를 유지하고, 불필요한 코드예시는 배제하여 구현 단계에 위임해야 한다.
 
-상태별 주의:
+### 5. 최종 탐색과 계획 보정
 
-- 발송 API 호출 시 월간 계약 사용량이 차감된다.
-- `integrity_hash`는 계약 완료 후에만 채워지고, 그 전에는 `null`일 수 있다.
-- `cancelled_at`과 `cancelled_reason`은 취소된 계약에서만 채워진다.
-- 다운로드 URL은 임시 URL이며 1시간 유효하다.
-- 일괄 다운로드 계열 API는 계약 ID 최대 50건까지 보낸다.
+기획문서를 쓴 뒤 바로 구현하지 않는다. 코드베이스를 한 번 더 탐색한다.
 
-## 에러 처리
+- 계획에 빠진 route, service, model, migration, queue, test, config가 없는지 확인
+- 기존 추상화와 충돌하는 새 구조가 없는지 확인
+- webhook raw body 처리처럼 프레임워크별로 놓치기 쉬운 파일이 빠지지 않았는지 확인
+- 필요하면 기획문서를 수정한다.
 
-에러 응답은 다음 형식이다.
+그 후 사용자에게 최종 작업 계획 검토를 요청한다. 수정 요청이 있으면 범위에 따라 1~5를 반복한다.
 
-```json
-{
-  "success": false,
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "에러 메시지"
-  },
-  "meta": {
-    "timestamp": "2025-01-06T10:00:00Z"
-  }
-}
-```
+### 6. 구현 단계
 
-주요 분기:
+사용자가 계획을 승인한 뒤에만 구현한다. 큰 범위를 한 번에 작업하지 않고 반드시 여러 범위로 분할한다.
 
-- `API_KEY_REQUIRED`, `INVALID_API_KEY`: 인증 헤더 또는 키 확인
-- `VALIDATION_ERROR`: 필수 필드, 역할명, 변수명, 날짜 형식 확인
-- `QUOTA_EXCEEDED`: 월간 사용량 한도 초과
-- `CONTRACT_NOT_FOUND`, `TEMPLATE_NOT_FOUND`: ID와 조직 권한 확인
-- `INVALID_CONTRACT_STATUS`: 현재 상태에서 가능한 작업인지 확인
+각 범위마다 다음을 반복한다.
 
-## 참조 문서 사용법
+1. 구현 계획문서의 해당 범위 재확인
+2. 관련 기존 구현 재확인
+3. 작은 단위로 구현
+4. 해당 범위 테스트
+5. 다음 범위로 이동
 
-`SKILL.md`에는 자주 틀리는 규칙만 둔다. 다음 상황에서는 [references/public-api-guide.md](references/public-api-guide.md)를 읽는다.
+## API 설계 체크리스트
 
-- 전체 API 목록이나 정확한 엔드포인트가 필요할 때
-- 요청 필드의 필수 여부, 타입, 기본값을 확인할 때
-- 응답 예시, HTTP 상태 코드, 에러 코드가 필요할 때
-- Python/JavaScript/cURL 샘플 코드를 작성할 때
-- 템플릿 상세 응답의 `signature_fields`, `signers`, `variables` 구조가 필요할 때
+- API Key는 서버 환경변수에만 둔다.
+- 클라이언트 브라우저에서 SnowSign API를 직접 호출하지 않는다.
+- 템플릿 계약은 `GET /templates/{template_id}`로 역할명과 변수를 먼저 확인한다.
+- `participants[].role`은 템플릿의 역할명과 정확히 일치해야 한다.
+- 순차 서명은 참여자별 `order`를 명확히 저장한다.
+- 계약 발송은 사용량 차감과 외부 이메일 발송이 있으므로 승인/확인 UX를 둔다.
+- `completed` 이전에는 PDF 다운로드를 전제로 하지 않는다.
+- 외부 API 실패는 사용자 메시지, 재시도 가능성, 내부 상태를 분리해 처리한다.
+
+## Webhook 설계 체크리스트
+
+- raw body로 HMAC-SHA256 서명을 검증한다.
+- 검증 실패는 401로 응답하고 처리하지 않는다.
+- 5초 내 2xx 응답 후 큐/잡으로 비동기 처리한다.
+- `contract_id + event + timestamp` 또는 별도 이벤트 ID로 idempotency를 보장한다.
+- `contract.completed`, `contract.cancelled`, `contract.expired`, `participant.declined`는 내부 상태 전이를 정의한다.
+- 이벤트 순서 역전과 중복 수신을 고려한다.
+- 수동 재전송을 고려해 재처리 로직을 멱등하게 만든다.
+- Webhook Secret은 환경변수/secret manager로 관리하고 로테이션 절차를 둔다.
+
+## 참조 문서 사용 규칙
+
+다음 상황에서는 반드시 reference를 확인한다.
+
+- 정확한 엔드포인트, 필수 필드, 응답 구조가 필요할 때
+- 템플릿 `signers`, `variables`, `signature_fields` 구조를 확인할 때
+- 웹훅 이벤트 타입, payload, 헤더, 서명 검증 방식이 필요할 때
+- 에러 코드, 상태값, rate limit, 샘플 구현이 필요할 때
+
+필요한 섹션만 읽고 답한다. 전체 문서를 불필요하게 요약하지 않는다.

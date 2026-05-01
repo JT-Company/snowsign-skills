@@ -1,6 +1,6 @@
 ---
 name: snowsign-contract-operator
-description: (운영) 스노우싸인 계약 조회, 생성, 발송, 취소, 리마인드, 다운로드를 API로 직접 처리하는 운영형 스킬.
+description: 스노우싸인 계약 조회, 생성, 발송, 취소, 리마인드, 다운로드를 API로 직접 처리하는 운영형 스킬.
 disable-model-invocation: false
 allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 ---

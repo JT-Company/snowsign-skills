@@ -60,7 +60,7 @@ curl -fsSL https://raw.githubusercontent.com/JT-Company/snowsign-skills/main/ins
 | 스킬 | 용도 |
 |---|---|
 | `snowsign-contract-operator` | SnowSign 계약 조회, 생성, 발송, 취소, 리마인더, 다운로드를 API로 직접 처리합니다. |
-| `snowsign-api-reference` | SnowSign Public API 연동 구현, 요청/응답 스키마, 템플릿 변수, 에러 처리를 확인합니다. |
+| `snowsign-api-reference` | SnowSign Public API와 웹훅을 ERP, 자체 서비스, 자동화 워크플로우에 연동하도록 설계합니다. |
 
 ## API 키 바꾸기
 

@@ -3,6 +3,7 @@ set -euo pipefail
 
 # 저장소 공개 후 실제 GitHub URL로 바꾸거나, 실행 시 REPO_URL을 직접 넘기세요.
 #   REPO_URL=https://github.com/JT-Company/snowsign-skills bash install.sh
+# 기본 설치 대상은 현재 프로젝트입니다. 사용자 전역 설치가 필요하면 --codex, --claude, --both를 명시하세요.
 REPO_URL="${REPO_URL:-https://github.com/JT-Company/snowsign-skills}"
 REF="${REF:-main}"
 

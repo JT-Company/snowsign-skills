@@ -10,16 +10,22 @@ import { fileURLToPath } from "node:url";
 
 const APP_NAME = "스노우싸인 스킬 설치";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const projectRoot = process.cwd();
 const skillsRoot = path.join(repoRoot, "skills");
 const claudeDestDir = process.env.CLAUDE_SKILLS_DIR || path.join(os.homedir(), ".claude", "skills");
 const codexDestDir = process.env.CODEX_SKILLS_DIR || path.join(os.homedir(), ".agents", "skills");
-const mcpInstallDir = process.env.SNOWSIGN_MCP_DIR || path.join(os.homedir(), ".snowsign", "mcp-repo");
+const mcpInstallDir = process.env.SNOWSIGN_MCP_DIR || path.join(projectRoot, ".snowsign", "mcp-repo");
 
-const targetOptions = [
-  { label: "Claude Code", value: "claude" },
-  { label: "Codex", value: "codex" },
-  { label: "Claude Code + Codex", value: "both" },
-  { label: "직접 경로 입력", value: "custom" },
+const scopeOptions = [
+  { label: "현재 프로젝트", value: "project", description: "이 프로젝트에서만 MCP를 사용합니다." },
+  { label: "내 계정 전역", value: "user", description: "내 계정의 모든 프로젝트에서 사용할 수 있게 등록합니다." },
+  { label: "원하는 경로", value: "custom", description: "스킬만 원하는 경로에 복사하고 MCP 자동 등록은 하지 않습니다." },
+];
+
+const clientOptions = [
+  { label: "Codex", value: "codex", description: "Codex에서 SnowSign MCP를 사용합니다." },
+  { label: "Claude Code", value: "claude", description: "Claude Code에서 SnowSign MCP를 사용합니다." },
+  { label: "Codex + Claude Code", value: "both", description: "두 클라이언트에서 모두 사용합니다." },
 ];
 
 const setupOptions = [
@@ -45,6 +51,8 @@ const setupOptions = [
 
 const state = {
   targetMode: "ask",
+  scopeMode: "ask",
+  clientMode: "ask",
   setupMode: "ask",
   skillArgs: [],
   customDestDir: "",
@@ -53,6 +61,7 @@ const state = {
 function printUsage() {
   console.log(`사용법:
   bash install.sh
+  bash install.sh --project --mode=full
   bash install.sh --all
   bash install.sh --codex --all
   bash install.sh --claude snowsign-contract-operator
@@ -63,31 +72,46 @@ function printUsage() {
   node scripts/install.mjs --all
 
 옵션:
-  --claude          Claude Code 위치(~/.claude/skills)에 설치
-  --codex           Codex 위치(~/.agents/skills)에 설치
-  --both            Claude Code와 Codex 양쪽에 설치
+  --project         현재 프로젝트에만 MCP 설정 생성
+  --claude          Claude Code 사용자 위치(~/.claude/skills)에 설치
+  --codex           Codex 사용자 위치(~/.agents/skills)에 설치
+  --both            Claude Code와 Codex 사용자 위치 양쪽에 설치
   --all             모든 스킬 설치
-  --target=<대상>   claude, codex, both, custom 중 하나
+  --scope=<범위>    project, user, custom 중 하나
+  --client=<대상>   codex, claude, both 중 하나
+  --target=<대상>   project, project-claude, project-both, claude, codex, both, custom 중 하나
   --dest=<경로>      --target=custom일 때 사용할 스킬 설치 경로
   --mode=<구성>     dev, ops, full 중 하나
 
 환경변수:
   CLAUDE_SKILLS_DIR Claude Code 스킬 설치 경로
   CODEX_SKILLS_DIR  Codex 스킬 설치 경로
+  SNOWSIGN_MCP_DIR  MCP 서버 파일 설치 경로, 기본값은 ./.snowsign/mcp-repo
   SNOWSIGN_API_KEY  설치 중 추가 입력 없이 현재 값을 사용`);
 }
 
 function parseArgs(args) {
   for (const arg of args) {
     switch (arg) {
+      case "--project":
+        state.targetMode = "project";
+        state.scopeMode = "project";
+        state.clientMode = "codex";
+        break;
       case "--claude":
         state.targetMode = "claude";
+        state.scopeMode = "user";
+        state.clientMode = "claude";
         break;
       case "--codex":
         state.targetMode = "codex";
+        state.scopeMode = "user";
+        state.clientMode = "codex";
         break;
       case "--both":
         state.targetMode = "both";
+        state.scopeMode = "user";
+        state.clientMode = "both";
         break;
       case "--all":
       case "all":
@@ -101,10 +125,25 @@ function parseArgs(args) {
       default:
         if (arg.startsWith("--target=")) {
           const target = arg.slice("--target=".length);
-          if (!["claude", "codex", "both", "custom"].includes(target)) {
+          if (!["project", "project-claude", "project-both", "claude", "codex", "both", "custom"].includes(target)) {
             throw new Error(`알 수 없는 설치 대상입니다: ${target}`);
           }
           state.targetMode = target;
+          applyTargetMode(target);
+        } else if (arg.startsWith("--scope=")) {
+          const scope = arg.slice("--scope=".length);
+          if (!["project", "user", "custom"].includes(scope)) {
+            throw new Error(`알 수 없는 설치 범위입니다: ${scope}`);
+          }
+          state.scopeMode = scope;
+          state.targetMode = "ask";
+        } else if (arg.startsWith("--client=")) {
+          const client = arg.slice("--client=".length);
+          if (!["codex", "claude", "both"].includes(client)) {
+            throw new Error(`알 수 없는 클라이언트입니다: ${client}`);
+          }
+          state.clientMode = client;
+          state.targetMode = "ask";
         } else if (arg.startsWith("--dest=")) {
           state.customDestDir = arg.slice("--dest=".length);
         } else if (arg.startsWith("--mode=")) {
@@ -122,12 +161,28 @@ function parseArgs(args) {
   }
 
   if (state.targetMode === "ask" && state.skillArgs.length > 0) {
-    state.targetMode = "both";
+    state.scopeMode = state.scopeMode === "ask" ? "project" : state.scopeMode;
+    state.clientMode = state.clientMode === "ask" ? "codex" : state.clientMode;
   }
 
   if (state.setupMode === "ask" && state.skillArgs.length > 0) {
     state.setupMode = "full";
   }
+}
+
+function applyTargetMode(targetMode) {
+  const mapping = {
+    project: ["project", "codex"],
+    "project-claude": ["project", "claude"],
+    "project-both": ["project", "both"],
+    codex: ["user", "codex"],
+    claude: ["user", "claude"],
+    both: ["user", "both"],
+    custom: ["custom", "both"],
+  };
+  const [scopeMode, clientMode] = mapping[targetMode] || ["ask", "ask"];
+  state.scopeMode = scopeMode;
+  state.clientMode = clientMode;
 }
 
 function parseFrontmatterValue(content, key) {
@@ -192,9 +247,21 @@ function createTerminal() {
 }
 
 const terminal = createTerminal();
+let outputCapture = null;
+let interactiveFrameLines = 0;
+let interactiveScreenCleared = false;
+
+function rawWrite(text = "") {
+  terminal.output.write(text);
+}
 
 function write(text = "") {
-  terminal.output.write(text);
+  if (outputCapture) {
+    outputCapture.push(text);
+    return;
+  }
+
+  rawWrite(text);
 }
 
 function writeln(text = "") {
@@ -213,6 +280,48 @@ function style(codes, text) {
 
 function clear() {
   if (terminal.isTTY) write("\u001b[2J\u001b[H");
+}
+
+function captureOutput(fn) {
+  const previousCapture = outputCapture;
+  outputCapture = [];
+
+  try {
+    fn();
+    return outputCapture.join("");
+  } finally {
+    outputCapture = previousCapture;
+  }
+}
+
+function outputLineCount(text) {
+  const lines = text.split("\n").length - 1;
+  return text.endsWith("\n") ? lines : lines + 1;
+}
+
+function clearInteractiveFrame() {
+  if (!terminal.isTTY || interactiveFrameLines === 0) return;
+  rawWrite(`\u001b[${interactiveFrameLines}F\u001b[J`);
+  interactiveFrameLines = 0;
+}
+
+function renderInteractiveFrame(fn) {
+  const text = captureOutput(fn);
+
+  if (!terminal.isTTY) {
+    rawWrite(text);
+    return;
+  }
+
+  if (!interactiveScreenCleared) {
+    rawWrite("\u001b[2J\u001b[H");
+    interactiveScreenCleared = true;
+  } else {
+    clearInteractiveFrame();
+  }
+
+  rawWrite(text);
+  interactiveFrameLines = outputLineCount(text);
 }
 
 function hideCursor() {
@@ -277,9 +386,10 @@ function renderHeader(step, heading, meta = "") {
   const width = terminalWidth();
   const steps = [
     ["1", "구성"],
-    ["2", "대상"],
-    ["3", "API 키"],
-    ["4", "설치"],
+    ["2", "범위"],
+    ["3", "클라이언트"],
+    ["4", "API 키"],
+    ["5", "설치"],
   ];
   const stepText = steps
     .map(([number, label]) => {
@@ -372,7 +482,32 @@ function renderSummaryBox(titleText, rows) {
 
 function targetSummary(targetMode) {
   if (targetMode === "custom" && state.customDestDir) return `직접 경로: ${state.customDestDir}`;
-  return targetOptions.find((option) => option.value === targetMode)?.label || "선택 전";
+  const labels = {
+    project: "현재 프로젝트 / Codex",
+    "project-claude": "현재 프로젝트 / Claude Code",
+    "project-both": "현재 프로젝트 / Codex + Claude Code",
+    codex: "내 계정 전역 / Codex",
+    claude: "내 계정 전역 / Claude Code",
+    both: "내 계정 전역 / Codex + Claude Code",
+    custom: "원하는 경로",
+  };
+  return labels[targetMode] || "선택 전";
+}
+
+function isProjectTarget(targetMode) {
+  return targetMode === "project" || targetMode === "project-claude" || targetMode === "project-both";
+}
+
+function targetFromScopeClient(scopeMode, clientMode) {
+  if (scopeMode === "custom") return "custom";
+  if (scopeMode === "project") {
+    if (clientMode === "claude") return "project-claude";
+    if (clientMode === "both") return "project-both";
+    return "project";
+  }
+  if (clientMode === "claude") return "claude";
+  if (clientMode === "both") return "both";
+  return "codex";
 }
 
 function setupSummary(setupMode) {
@@ -411,47 +546,80 @@ async function withRawMode(fn) {
   try {
     return await fn();
   } finally {
+    clearInteractiveFrame();
     terminal.input.setRawMode(false);
     terminal.input.pause();
     showCursor();
   }
 }
 
-async function chooseTarget() {
-  let cursor = 2;
+async function chooseScope() {
+  let cursor = 0;
 
   return withRawMode(async () => {
     while (true) {
-      clear();
-      renderHeader(2, "설치 대상을 선택하세요.", `구성: ${setupSummary(state.setupMode)}`);
-      writeln();
+      renderInteractiveFrame(() => {
+        renderHeader(2, "설치 범위를 선택하세요.", `구성: ${setupSummary(state.setupMode)}`);
+        writeln();
 
-      targetOptions.forEach((option, index) => {
-        const descriptions = {
-          claude: "~/.claude/skills에 설치합니다.",
-          codex: "~/.agents/skills에 설치합니다.",
-          both: "Claude Code와 Codex 양쪽에 설치합니다.",
-          custom: "원하는 스킬 설치 경로를 직접 입력합니다.",
-        };
-
-        renderOption({
-          active: index === cursor,
-          checked: index === cursor,
-          label: option.label,
-          description: descriptions[option.value],
+        scopeOptions.forEach((option, index) => {
+          renderOption({
+            active: index === cursor,
+            checked: index === cursor,
+            label: option.label,
+            description: option.description,
+          });
         });
+
+        renderHelp([
+          ["↑/↓", "이동"],
+          ["Enter", "선택"],
+          ["q", "종료"],
+        ]);
       });
 
-      renderHelp([
-        ["↑/↓", "이동"],
-        ["Enter", "선택"],
-        ["q", "종료"],
-      ]);
+      const key = await readKey();
+      if (key === "up") cursor = cursor > 0 ? cursor - 1 : scopeOptions.length - 1;
+      if (key === "down") cursor = cursor < scopeOptions.length - 1 ? cursor + 1 : 0;
+      if (key === "enter") return scopeOptions[cursor].value;
+      if (key === "quit") {
+        clear();
+        writeln("설치를 취소했습니다.");
+        process.exit(0);
+      }
+    }
+  });
+}
+
+async function chooseClient(scopeMode) {
+  let cursor = scopeMode === "project" ? 0 : 2;
+
+  return withRawMode(async () => {
+    while (true) {
+      renderInteractiveFrame(() => {
+        renderHeader(3, "사용할 클라이언트를 선택하세요.", `범위: ${scopeOptions.find((option) => option.value === scopeMode)?.label}`);
+        writeln();
+
+        clientOptions.forEach((option, index) => {
+          renderOption({
+            active: index === cursor,
+            checked: index === cursor,
+            label: option.label,
+            description: option.description,
+          });
+        });
+
+        renderHelp([
+          ["↑/↓", "이동"],
+          ["Enter", "선택"],
+          ["q", "종료"],
+        ]);
+      });
 
       const key = await readKey();
-      if (key === "up") cursor = cursor > 0 ? cursor - 1 : targetOptions.length - 1;
-      if (key === "down") cursor = cursor < targetOptions.length - 1 ? cursor + 1 : 0;
-      if (key === "enter") return targetOptions[cursor].value;
+      if (key === "up") cursor = cursor > 0 ? cursor - 1 : clientOptions.length - 1;
+      if (key === "down") cursor = cursor < clientOptions.length - 1 ? cursor + 1 : 0;
+      if (key === "enter") return clientOptions[cursor].value;
       if (key === "quit") {
         clear();
         writeln("설치를 취소했습니다.");
@@ -466,24 +634,25 @@ async function chooseSetup() {
 
   return withRawMode(async () => {
     while (true) {
-      clear();
-      renderHeader(1, "설치 구성을 선택하세요.", "구성 선택");
-      writeln();
+      renderInteractiveFrame(() => {
+        renderHeader(1, "설치 구성을 선택하세요.", "구성 선택");
+        writeln();
 
-      setupOptions.forEach((option, index) => {
-        renderOption({
-          active: index === cursor,
-          checked: index === cursor,
-          label: option.label,
-          description: option.description,
+        setupOptions.forEach((option, index) => {
+          renderOption({
+            active: index === cursor,
+            checked: index === cursor,
+            label: option.label,
+            description: option.description,
+          });
         });
-      });
 
-      renderHelp([
-        ["↑/↓", "이동"],
-        ["Enter", "선택"],
-        ["q", "종료"],
-      ]);
+        renderHelp([
+          ["↑/↓", "이동"],
+          ["Enter", "선택"],
+          ["q", "종료"],
+        ]);
+      });
 
       const key = await readKey();
       if (key === "up") cursor = cursor > 0 ? cursor - 1 : setupOptions.length - 1;
@@ -504,30 +673,31 @@ async function chooseSkills(skills, targetMode) {
 
   return withRawMode(async () => {
     while (true) {
-      clear();
-      const selectedCount = selected.filter(Boolean).length;
-      renderHeader(2, "설치할 스킬을 선택하세요.", `대상: ${targetSummary(targetMode)}`);
-      renderStatus(`선택됨 ${selectedCount} / ${skills.length}`, selectedCount > 0 ? "success" : "muted");
-      writeln();
+      renderInteractiveFrame(() => {
+        const selectedCount = selected.filter(Boolean).length;
+        renderHeader(2, "설치할 스킬을 선택하세요.", `대상: ${targetSummary(targetMode)}`);
+        renderStatus(`선택됨 ${selectedCount} / ${skills.length}`, selectedCount > 0 ? "success" : "muted");
+        writeln();
 
-      skills.forEach((skill, index) => {
-        renderOption({
-          active: index === cursor,
-          checked: selected[index],
-          label: skill.name,
-          description: skill.description,
+        skills.forEach((skill, index) => {
+          renderOption({
+            active: index === cursor,
+            checked: selected[index],
+            label: skill.name,
+            description: skill.description,
+          });
         });
-      });
 
-      writeln();
-      renderStatus(selected.every(Boolean) ? "전체 선택 상태입니다." : "필요한 스킬만 선택해 설치할 수 있습니다.");
-      renderHelp([
-        ["↑/↓", "이동"],
-        ["Space", "선택"],
-        ["a", "전체선택/해제"],
-        ["Enter", "설치"],
-        ["q", "종료"],
-      ]);
+        writeln();
+        renderStatus(selected.every(Boolean) ? "전체 선택 상태입니다." : "필요한 스킬만 선택해 설치할 수 있습니다.");
+        renderHelp([
+          ["↑/↓", "이동"],
+          ["Space", "선택"],
+          ["a", "전체선택/해제"],
+          ["Enter", "설치"],
+          ["q", "종료"],
+        ]);
+      });
 
       const key = await readKey();
       if (key === "up") cursor = cursor > 0 ? cursor - 1 : skills.length - 1;
@@ -613,11 +783,91 @@ function commandExists(command) {
 }
 
 function prepareMcpRepo() {
+  if (!process.env.SNOWSIGN_MCP_DIR && path.resolve(projectRoot) === path.resolve(repoRoot)) {
+    const serverFile = path.join(repoRoot, "mcp", "snowsign_mcp.mjs");
+    fs.chmodSync(serverFile, 0o755);
+    return serverFile;
+  }
+
   fs.rmSync(mcpInstallDir, { recursive: true, force: true });
-  fs.mkdirSync(path.dirname(mcpInstallDir), { recursive: true });
-  fs.cpSync(repoRoot, mcpInstallDir, { recursive: true });
+  fs.mkdirSync(path.join(mcpInstallDir, "mcp"), { recursive: true });
+  fs.mkdirSync(path.join(mcpInstallDir, "skills", "snowsign-api-reference", "references"), { recursive: true });
+  fs.cpSync(path.join(repoRoot, "mcp", "snowsign_mcp.mjs"), path.join(mcpInstallDir, "mcp", "snowsign_mcp.mjs"));
+  fs.cpSync(
+    path.join(repoRoot, "skills", "snowsign-api-reference", "references", "public-api-guide.md"),
+    path.join(mcpInstallDir, "skills", "snowsign-api-reference", "references", "public-api-guide.md"),
+  );
   fs.chmodSync(path.join(mcpInstallDir, "mcp", "snowsign_mcp.mjs"), 0o755);
   return path.join(mcpInstallDir, "mcp", "snowsign_mcp.mjs");
+}
+
+function posixRelative(from, to) {
+  return path.relative(from, to).split(path.sep).join("/");
+}
+
+function tomlString(value) {
+  return JSON.stringify(value);
+}
+
+function writeManagedBlock(file, startMarker, endMarker, block) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+
+  const nextBlock = `${startMarker}\n${block.trimEnd()}\n${endMarker}`;
+  if (!fs.existsSync(file)) {
+    fs.writeFileSync(file, `${nextBlock}\n`);
+    return;
+  }
+
+  const current = fs.readFileSync(file, "utf8");
+  const pattern = new RegExp(`${startMarker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]*?${endMarker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
+  if (pattern.test(current)) {
+    fs.writeFileSync(file, current.replace(pattern, nextBlock));
+    return;
+  }
+
+  const separator = current.endsWith("\n") ? "\n" : "\n\n";
+  fs.writeFileSync(file, `${current}${separator}${nextBlock}\n`);
+}
+
+function writeCodexProjectMcp(serverFile) {
+  const configFile = path.join(projectRoot, ".codex", "config.toml");
+  const serverPath = posixRelative(projectRoot, serverFile);
+  const block = `
+[mcp_servers.snowsign]
+command = "node"
+args = [${tomlString(serverPath)}]
+cwd = "."
+env_vars = ["SNOWSIGN_API_KEY"]
+`;
+
+  writeManagedBlock(configFile, "# BEGIN SnowSign MCP", "# END SnowSign MCP", block);
+  return configFile;
+}
+
+function writeClaudeProjectMcp(serverFile) {
+  const configFile = path.join(projectRoot, ".mcp.json");
+  const serverPath = posixRelative(projectRoot, serverFile);
+  let config = {};
+
+  if (fs.existsSync(configFile)) {
+    try {
+      config = JSON.parse(fs.readFileSync(configFile, "utf8"));
+    } catch (error) {
+      throw new Error(`${configFile} 파일이 올바른 JSON이 아닙니다: ${error.message}`);
+    }
+  }
+
+  config.mcpServers = config.mcpServers && typeof config.mcpServers === "object" ? config.mcpServers : {};
+  config.mcpServers.snowsign = {
+    command: "node",
+    args: [serverPath],
+    env: {
+      SNOWSIGN_API_KEY: "${SNOWSIGN_API_KEY}",
+    },
+  };
+
+  fs.writeFileSync(configFile, `${JSON.stringify(config, null, 2)}\n`);
+  return configFile;
 }
 
 function registerMcp(targetMode) {
@@ -625,6 +875,19 @@ function registerMcp(targetMode) {
 
   const serverFile = prepareMcpRepo();
   const results = [];
+
+  if (targetMode === "project" || targetMode === "project-both") {
+    results.push(["Codex MCP", writeCodexProjectMcp(serverFile)]);
+  }
+
+  if (targetMode === "project-claude" || targetMode === "project-both") {
+    results.push(["Claude MCP", writeClaudeProjectMcp(serverFile)]);
+  }
+
+  if (isProjectTarget(targetMode)) {
+    results.push(["MCP 서버", serverFile]);
+    return results;
+  }
 
   if (targetMode === "custom") {
     results.push(["MCP", `직접 경로 선택 시 MCP는 자동 등록하지 않습니다. 서버 파일: ${serverFile}`]);
@@ -813,7 +1076,7 @@ async function promptCustomDestDir() {
 
 async function promptApiKey() {
   console.log();
-  renderHeader(3, "SnowSign API 키를 입력하세요.", "필수");
+  renderHeader(4, "SnowSign API 키를 입력하세요.", "필수");
 
   if (process.env.SNOWSIGN_API_KEY) {
     renderStatus("SNOWSIGN_API_KEY 환경변수가 이미 설정되어 있습니다.", "success");
@@ -843,7 +1106,7 @@ function printFooter(targetMode, mcpRows = []) {
   console.log();
   const rows = [
     ["설치 구성", setupSummary(state.setupMode)],
-    ["설치 대상", targetSummary(targetMode)],
+    ["설치 범위", targetSummary(targetMode)],
   ];
 
   if (targetMode === "claude" || targetMode === "both") {
@@ -868,7 +1131,14 @@ async function main() {
 
   const skills = loadSkills();
   state.setupMode = state.setupMode === "ask" ? await chooseSetup() : state.setupMode;
-  const targetMode = state.targetMode === "ask" ? await chooseTarget() : state.targetMode;
+  if (state.targetMode === "ask") {
+    state.scopeMode = state.scopeMode === "ask" ? await chooseScope() : state.scopeMode;
+    if (state.scopeMode !== "custom") {
+      state.clientMode = state.clientMode === "ask" ? await chooseClient(state.scopeMode) : state.clientMode;
+    }
+    state.targetMode = targetFromScopeClient(state.scopeMode, state.clientMode);
+  }
+  const targetMode = state.targetMode;
   state.targetMode = targetMode;
   await promptCustomDestDir();
 
@@ -878,13 +1148,15 @@ async function main() {
   await promptApiKey();
 
   if (terminal.isTTY) {
-    renderHeader(4, "선택한 구성을 설치합니다.", `대상: ${targetSummary(targetMode)}`);
+    renderHeader(5, "선택한 구성을 설치합니다.", `범위: ${targetSummary(targetMode)}`);
   }
 
   const mcpRows = registerMcp(targetMode);
 
-  for (const skill of selectedSkills) {
-    installSkill(skill, targetMode);
+  if (!isProjectTarget(targetMode)) {
+    for (const skill of selectedSkills) {
+      installSkill(skill, targetMode);
+    }
   }
 
   printFooter(targetMode, mcpRows);

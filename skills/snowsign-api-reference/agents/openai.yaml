@@ -1,7 +1,7 @@
 interface:
-  display_name: "SnowSign API Reference"
-  short_description: "SnowSign Public API 연동 레퍼런스"
-  default_prompt: "Use $snowsign-api-reference to implement a SnowSign template contract creation flow."
+  display_name: "SnowSign API & Webhook Architect"
+  short_description: "SnowSign API와 웹훅 연동 설계"
+  default_prompt: "Use $snowsign-api-reference to design a SnowSign API and webhook integration plan."
 
 policy:
   allow_implicit_invocation: true
