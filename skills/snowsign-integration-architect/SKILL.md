@@ -1,5 +1,5 @@
 ---
-name: snowsign-api-reference
+name: snowsign-integration-architect
 description: 스노우싸인 API와 웹훅을 ERP, 자체 서비스, 자동화 워크플로우에 연동하도록 설계하고 구현 계획을 작성하는 개발/설계형 스킬.
 disable-model-invocation: false
 allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
@@ -49,7 +49,7 @@ SnowSign Public API와 웹훅을 기존 ERP, 자체 서비스, 백오피스, 배
 
 ### 1. 코드베이스와 현재 업무 분석
 
-이미 구현된 코드가 있으면 먼저 읽는다. 최소 확인 범위:
+이미 구현된 코드가 있으면 먼저 읽는다. 코드베이스에 `.md` 파일을 나열해보고 중요 지침 문서나 기획이 있다면 반드시 우선 참고한다.
 
 - 프레임워크, 라우팅, API client, DB 접근 계층, 배치/큐 구조
 - 인증/권한 모델과 조직/사용자/계약 데이터 모델
@@ -113,8 +113,8 @@ SnowSign Public API와 웹훅을 기존 ERP, 자체 서비스, 백오피스, 배
 각 범위마다 다음을 반복한다.
 
 1. 구현 계획문서의 해당 범위 재확인
-2. 관련 기존 구현 재확인
-3. 작은 단위로 구현
+2. 관련 기존 구현 및 기획문서 재확인
+3. 작은 단위로 기획문서 수정 및 코드 구현
 4. 해당 범위 테스트
 5. 다음 범위로 이동
 

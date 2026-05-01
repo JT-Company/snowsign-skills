@@ -11,7 +11,7 @@ const SERVER_VERSION = "0.2.0";
 const DEFAULT_BASE_URL = "https://api-snowsign.jtsnowball.com/public/v1";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const apiGuidePath = path.join(repoRoot, "skills", "snowsign-api-reference", "references", "public-api-guide.md");
+const apiGuidePath = path.join(repoRoot, "skills", "snowsign-integration-architect", "references", "public-api-guide.md");
 
 if (typeof fetch !== "function") {
   throw new Error("SnowSign MCP 서버는 Node.js 18 이상이 필요합니다.");

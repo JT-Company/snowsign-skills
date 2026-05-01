@@ -1,7 +1,7 @@
 interface:
   display_name: "SnowSign API & Webhook Architect"
   short_description: "SnowSign API와 웹훅 연동 설계"
-  default_prompt: "Use $snowsign-api-reference to design a SnowSign API and webhook integration plan."
+  default_prompt: "Use $snowsign-integration-architect to design a SnowSign API and webhook integration plan."
 
 policy:
   allow_implicit_invocation: true

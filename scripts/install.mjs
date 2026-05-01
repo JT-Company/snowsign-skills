@@ -64,7 +64,7 @@ const setupOptions = [
     label: "개발용",
     value: "dev",
     description: "API 문서와 연동 구현 참고용 스킬만 설치합니다.",
-    skills: ["snowsign-api-reference"],
+    skills: ["snowsign-integration-architect"],
   },
   {
     label: "운영용",
@@ -76,7 +76,7 @@ const setupOptions = [
     label: "전체",
     value: "full",
     description: "개발용과 운영용 스킬을 모두 설치합니다.",
-    skills: ["snowsign-api-reference", "snowsign-contract-operator"],
+    skills: ["snowsign-integration-architect", "snowsign-contract-operator"],
   },
 ];
 
@@ -96,7 +96,7 @@ function printUsage() {
   bash install.sh --all
   bash install.sh --codex --all
   bash install.sh --claude snowsign-contract-operator
-  bash install.sh --both snowsign-contract-operator snowsign-api-reference
+  bash install.sh --both snowsign-contract-operator snowsign-integration-architect
   bash install.sh --mode=dev
   bash install.sh --mode=ops
   bash install.sh --mode=full
@@ -788,7 +788,7 @@ function selectRequestedSkills(skills) {
 
   const byName = new Map(skills.map((skill) => [skill.name, skill]));
   byName.set("snowsign-api-operator", byName.get("snowsign-contract-operator"));
-  byName.set("snowsign-public-api", byName.get("snowsign-api-reference"));
+  byName.set("snowsign-public-api", byName.get("snowsign-integration-architect"));
   return state.skillArgs.map((name) => {
     const skill = byName.get(name);
     if (!skill) throw new Error(`스킬을 찾지 못했습니다: ${name}`);
@@ -834,11 +834,11 @@ function prepareMcpRepo() {
 
   fs.rmSync(mcpInstallDir, { recursive: true, force: true });
   fs.mkdirSync(path.join(mcpInstallDir, "mcp"), { recursive: true });
-  fs.mkdirSync(path.join(mcpInstallDir, "skills", "snowsign-api-reference", "references"), { recursive: true });
+  fs.mkdirSync(path.join(mcpInstallDir, "skills", "snowsign-integration-architect", "references"), { recursive: true });
   fs.cpSync(path.join(repoRoot, "mcp", "snowsign_mcp.mjs"), path.join(mcpInstallDir, "mcp", "snowsign_mcp.mjs"));
   fs.cpSync(
-    path.join(repoRoot, "skills", "snowsign-api-reference", "references", "public-api-guide.md"),
-    path.join(mcpInstallDir, "skills", "snowsign-api-reference", "references", "public-api-guide.md"),
+    path.join(repoRoot, "skills", "snowsign-integration-architect", "references", "public-api-guide.md"),
+    path.join(mcpInstallDir, "skills", "snowsign-integration-architect", "references", "public-api-guide.md"),
   );
   fs.chmodSync(path.join(mcpInstallDir, "mcp", "snowsign_mcp.mjs"), 0o755);
   return path.join(mcpInstallDir, "mcp", "snowsign_mcp.mjs");
