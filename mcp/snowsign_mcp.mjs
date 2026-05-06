@@ -7,7 +7,7 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 
 const SERVER_NAME = "snowsign";
-const SERVER_VERSION = "0.2.0";
+const SERVER_VERSION = "0.2.1";
 const DEFAULT_BASE_URL = "https://api-snowsign.jtsnowball.com/public/v1";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -256,7 +256,7 @@ const TOOLS = [
   },
   {
     name: "snowsign_get_template",
-    description: "SnowSign 템플릿 상세 정보를 조회합니다.",
+    description: "SnowSign 템플릿 상세 정보를 조회합니다. 응답의 signers[].security_method는 email, password, easy_cert 중 하나인 역할별 보안 정책입니다.",
     inputSchema: objectSchema({
       template_id: { type: "string", description: "템플릿 ID입니다." },
     }, ["template_id"]),
@@ -271,7 +271,7 @@ const TOOLS = [
   },
   {
     name: "snowsign_create_contract_from_template",
-    description: "SnowSign 템플릿으로 계약 초안을 생성합니다.",
+    description: "SnowSign 템플릿으로 계약 초안을 생성합니다. 먼저 snowsign_get_template으로 signers[].security_method를 확인하세요. password 역할은 participants[].security={method:'password', value:'...'}가 필요하고, easy_cert 역할은 phone만 전달하며 security를 전달하지 않습니다.",
     inputSchema: objectSchema({
       template_id: { type: "string", description: "템플릿 ID입니다." },
       contract: { type: "object", description: "POST /v1/templates/{id}/create-contract 요청 본문입니다." },
@@ -373,7 +373,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "SnowSign MCP 도구로 계약 조회, 생성, 발송, 취소, 리마인더, 다운로드를 수행하세요. 상태 변경 작업은 실행 전 사용자 확인을 받으세요.",
+            text: "SnowSign MCP 도구로 계약 조회, 생성, 발송, 취소, 리마인더, 다운로드를 수행하세요. 상태 변경 작업은 실행 전 사용자 확인을 받으세요. 템플릿으로 계약을 생성할 때는 먼저 템플릿 상세의 signers[].security_method를 확인하고, password 역할에만 participants[].security 비밀번호 값을 전달하며 easy_cert 역할에는 phone만 전달하세요.",
           },
         }],
       };
@@ -386,7 +386,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "snowsign_get_api_reference_section 도구로 필요한 API 섹션을 확인한 뒤 SnowSign Public API 연동 코드를 작성하세요.",
+            text: "snowsign_get_api_reference_section 도구로 필요한 API 섹션을 확인한 뒤 SnowSign Public API 연동 코드를 작성하세요. 템플릿 생성 플로우에서는 GET /v1/templates/{id} 응답의 signers[].security_method가 보안 정책의 기준입니다.",
           },
         }],
       };
