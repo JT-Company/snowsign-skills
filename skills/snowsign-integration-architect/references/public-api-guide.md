@@ -517,8 +517,8 @@ X-API-Key: YOUR_API_KEY
     "signing_order": "sequential",
     "deadline_days": 7,
     "signers": [
-      { "uuid": "signer-uuid-1", "role_name": "근로자", "signing_order": 1 },
-      { "uuid": "signer-uuid-2", "role_name": "회사", "signing_order": 2 }
+      { "uuid": "signer-uuid-1", "role_name": "근로자", "signing_order": 1, "security_method": "easy_cert" },
+      { "uuid": "signer-uuid-2", "role_name": "회사", "signing_order": 2, "security_method": "password" }
     ],
     "signature_fields": [
       {
@@ -553,6 +553,8 @@ X-API-Key: YOUR_API_KEY
   }
 }
 ```
+
+`signers[].security_method`는 템플릿 역할에 저장된 서명 보안 정책입니다. 값은 `email`, `password`, `easy_cert` 중 하나이며, 값이 없으면 `email`과 동일하게 처리됩니다.
 
 ---
 
@@ -602,9 +604,7 @@ X-API-Key: YOUR_API_KEY
 | phone | string | N | 참여자 휴대폰 번호. 휴대폰 간편인증 사용 시 필수 |
 | role | string | Y | 템플릿에 정의된 역할명 (예: "근로자", "회사") |
 | order | integer | N | 서명 순서 |
-| security | object | N | 서명 보안 수단 |
-| security.method | string | Y | `password` 또는 `identity_verification` |
-| security.value | string | N | `password`일 때 비밀번호. `identity_verification`일 때는 전달하지 않음 |
+| security | object | 조건부 | 템플릿 역할이 비밀번호 보호이면 필수. `{ "method": "password", "value": "..." }`로 서명 비밀번호를 전달합니다. 이메일/간편인증 역할에는 전달하지 않습니다. |
 
 **variables 사용법**
 
@@ -621,7 +621,7 @@ X-API-Key: YOUR_API_KEY
 {
   "title": "홍길동 근로계약서",
   "participants": [
-    { "name": "홍길동", "email": "hong@example.com", "phone": "010-1234-5678", "role": "근로자", "order": 1, "security": { "method": "identity_verification" } },
+    { "name": "홍길동", "email": "hong@example.com", "phone": "010-1234-5678", "role": "근로자", "order": 1 },
     { "name": "스노우싸인(주)", "email": "hr@snowsign.io", "role": "회사", "order": 2, "security": { "method": "password", "value": "1234" } }
   ],
   "variables": {
