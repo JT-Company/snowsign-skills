@@ -1,6 +1,6 @@
 ---
 name: snowsign-contract-operator
-description: 스노우싸인 계약 조회, 생성, 발송, 취소, 리마인드, 다운로드를 API로 직접 처리하는 운영형 스킬.
+description: 스노우싸인 계약 조회, 템플릿 기반 생성, 발송, 취소, 리마인드, 다운로드를 API로 직접 처리하는 운영형 스킬.
 disable-model-invocation: false
 allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 ---
@@ -37,7 +37,6 @@ test -n "$SNOWSIGN_API_KEY"
 | 작업 | MCP 도구 |
 |---|---|
 | 계약 목록 조회 | `snowsign_list_contracts` |
-| 계약 생성 | `snowsign_create_contract` |
 | 계약 상세 조회 | `snowsign_get_contract` |
 | 계약 상태 조회 | `snowsign_get_contract_status` |
 | 계약 발송 | `snowsign_send_contract` |
@@ -62,9 +61,8 @@ test -n "$SNOWSIGN_API_KEY"
 | 계약서 목록 보여줘, 완료된 계약 찾아줘 | `snowsign_list_contracts` | `GET /contracts` |
 | 특정 계약 상태 확인 | `snowsign_get_contract_status` | `GET /contracts/{contract_id}/status` |
 | 특정 계약 상세 확인 | `snowsign_get_contract` | `GET /contracts/{contract_id}` |
-| 새 계약서 만들어줘 | `snowsign_create_contract` | `POST /contracts` |
 | 템플릿 목록/상세 확인 | `snowsign_list_templates`, `snowsign_get_template` | `GET /templates`, `GET /templates/{template_id}` |
-| 템플릿으로 계약서 만들어줘 | `snowsign_create_contract_from_template` | `POST /templates/{template_id}/create-contract` |
+| 새 계약서 만들어줘, 템플릿으로 계약서 만들어줘 | `snowsign_create_contract_from_template` | `POST /templates/{template_id}/create-contract` |
 | 계약서 보내줘 | `snowsign_send_contract` | `POST /contracts/{contract_id}/send` |
 | 계약서 취소해줘 | `snowsign_cancel_contract` | `POST /contracts/{contract_id}/cancel` |
 | 리마인더 보내줘 | `snowsign_remind_contract` | `POST /contracts/{contract_id}/remind` |
@@ -77,7 +75,6 @@ test -n "$SNOWSIGN_API_KEY"
 
 정보가 부족하면 API를 추측해서 호출하지 말고 필요한 항목만 짧게 묻는다.
 
-- 계약 생성: `title`, 참여자 `name`, `email`이 필요하다.
 - 순차 서명: `signing_order: sequential`이면 참여자별 `order`가 필요하다.
 - 템플릿 계약 생성: `template_id`, 참여자별 템플릿 역할명(`role`), 필수 변수 값이 필요하다.
 - 발송, 취소, 리마인더: `contract_id`가 필요하다.
@@ -88,7 +85,7 @@ test -n "$SNOWSIGN_API_KEY"
 - 계약 발송: 월간 계약 사용량이 차감된다.
 - 계약 취소: 계약 상태가 바뀐다.
 - 리마인더 발송: 참여자에게 이메일이 발송된다.
-- 계약 생성: 새 리소스가 생성된다.
+- 템플릿 기반 계약 생성: 새 리소스가 생성된다.
 
 사용자 요청이 모호하면 실행 전 확인한다. 예: "이 계약 처리해줘"는 조회인지 발송인지 물어본다.
 
@@ -107,7 +104,6 @@ test -n "$SNOWSIGN_API_KEY"
 
 MCP 도구를 사용할 때도 상태 변경 작업은 사용자가 명시적으로 요청했을 때만 실행한다. 특히 다음 도구는 실행 전 요청 의도가 분명해야 한다.
 
-- `snowsign_create_contract`
 - `snowsign_create_contract_from_template`
 - `snowsign_send_contract`
 - `snowsign_cancel_contract`
@@ -145,25 +141,6 @@ curl -sS "$BASE_URL/contracts/{contract_id}" \
 ```
 
 결과 요약 시에는 보통 `contract_id`, `title`, `status`, `created_at`, `sent_at`, `completed_at`, 참여자 상태를 중심으로 답한다.
-
-## 일반 계약 생성
-
-일반 계약 생성은 초안(`draft`)만 만든다. 참여자에게 보내려면 발송 API를 별도로 호출해야 한다.
-
-```bash
-curl -sS -X POST "$BASE_URL/contracts" \
-  -H "X-API-Key: $SNOWSIGN_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "업무 위탁 계약서",
-    "signing_order": "parallel",
-    "participants": [
-      { "name": "홍길동", "email": "hong@example.com", "role": "signer" }
-    ]
-  }'
-```
-
-생성 후 답변에는 생성된 `contract_id`, 제목, 상태를 알려주고, 사용자가 발송까지 요청했다면 이어서 발송 API를 호출한다.
 
 ## 템플릿 계약 생성
 

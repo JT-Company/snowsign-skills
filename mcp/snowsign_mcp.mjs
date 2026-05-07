@@ -7,7 +7,7 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 
 const SERVER_NAME = "snowsign";
-const SERVER_VERSION = "0.2.1";
+const SERVER_VERSION = "0.2.2";
 const DEFAULT_BASE_URL = "https://api-snowsign.jtsnowball.com/public/v1";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -172,13 +172,6 @@ const TOOLS = [
     }),
   },
   {
-    name: "snowsign_create_contract",
-    description: "SnowSign 계약 초안을 생성합니다.",
-    inputSchema: objectSchema({
-      contract: { type: "object", description: "POST /v1/contracts 요청 본문입니다." },
-    }, ["contract"]),
-  },
-  {
     name: "snowsign_get_contract",
     description: "SnowSign 계약 상세 정보를 조회합니다.",
     inputSchema: objectSchema({
@@ -286,7 +279,7 @@ const TOOLS = [
     name: "snowsign_get_api_reference_section",
     description: "SnowSign API 참조 문서의 특정 섹션을 반환합니다.",
     inputSchema: objectSchema({
-      title: { type: "string", description: "섹션 제목입니다. 예: 계약서 생성, 템플릿으로 계약서 생성, 에러 처리" },
+      title: { type: "string", description: "섹션 제목입니다. 예: 템플릿으로 계약서 생성, 에러 처리" },
     }, ["title"]),
   },
 ];
@@ -306,7 +299,6 @@ const PROMPTS = [
 
 async function callTool(name, args) {
   if (name === "snowsign_list_contracts") return jsonText(await apiRequest("GET", "/contracts", { query: args }));
-  if (name === "snowsign_create_contract") return jsonText(await apiRequest("POST", "/contracts", { body: args.contract }));
   if (name === "snowsign_get_contract") return jsonText(await apiRequest("GET", `/contracts/${encodeURIComponent(args.contract_id)}`));
   if (name === "snowsign_get_contract_status") return jsonText(await apiRequest("GET", `/contracts/${encodeURIComponent(args.contract_id)}/status`));
   if (name === "snowsign_send_contract") {
@@ -373,7 +365,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "SnowSign MCP 도구로 계약 조회, 생성, 발송, 취소, 리마인더, 다운로드를 수행하세요. 상태 변경 작업은 실행 전 사용자 확인을 받으세요. 템플릿으로 계약을 생성할 때는 먼저 템플릿 상세의 signers[].security_method를 확인하고, password 역할에만 participants[].security 비밀번호 값을 전달하며 easy_cert 역할에는 phone만 전달하세요.",
+            text: "SnowSign MCP 도구로 계약 조회, 템플릿 기반 생성, 발송, 취소, 리마인더, 다운로드를 수행하세요. 상태 변경 작업은 실행 전 사용자 확인을 받으세요. 계약 생성은 POST /contracts가 아니라 템플릿 기반 생성 도구만 사용하세요. 템플릿으로 계약을 생성할 때는 먼저 템플릿 상세의 signers[].security_method를 확인하고, password 역할에만 participants[].security 비밀번호 값을 전달하며 easy_cert 역할에는 phone만 전달하세요.",
           },
         }],
       };
