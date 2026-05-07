@@ -7,7 +7,6 @@
 - [API 목록](#api-목록)
 - [계약서 API](#계약서-api)
   - [계약서 목록 조회](#계약서-목록-조회)
-  - [계약서 생성](#계약서-생성)
   - [계약서 상세 조회](#계약서-상세-조회)
   - [계약서 상태 조회](#계약서-상태-조회)
   - [계약서 발송](#계약서-발송)
@@ -69,7 +68,6 @@ X-API-Key: YOUR_API_KEY
 | 메서드 | 엔드포인트 | 설명 |
 |--------|-----------|------|
 | GET | [/v1/contracts](#계약서-목록-조회) | 계약서 목록 조회 |
-| POST | [/v1/contracts](#계약서-생성) | 계약서 생성 |
 | GET | [/v1/contracts/{id}](#계약서-상세-조회) | 계약서 상세 조회 |
 | GET | [/v1/contracts/{id}/status](#계약서-상태-조회) | 계약서 상태 조회 |
 | POST | [/v1/contracts/{id}/send](#계약서-발송) | 계약서 발송 |
@@ -130,68 +128,6 @@ X-API-Key: YOUR_API_KEY
   }
 }
 ```
-
----
-
-### 계약서 생성
-
-`POST /v1/contracts`
-
-**Request Body**
-
-| 필드 | 타입 | 필수 | 설명 |
-|------|------|------|------|
-| title | string | Y | 계약서 제목 |
-| description | string | N | 계약서 설명 |
-| signing_order | string | N | 서명 순서 (sequential / parallel, 기본값: parallel) |
-| expires_at | datetime | N | 만료일시 (ISO 8601) |
-| participants | array | N | 참여자 목록 |
-
-**participants 항목**
-
-| 필드 | 타입 | 필수 | 설명 |
-|------|------|------|------|
-| name | string | Y | 참여자 이름 |
-| email | string | Y | 참여자 이메일 |
-| phone | string | N | 참여자 휴대폰 번호. 휴대폰 간편인증 사용 시 필수 |
-| role | string | N | 역할 (signer / viewer, 기본값: signer) |
-| order | integer | N | 서명 순서 (순차 서명 시) |
-| security | object | N | 서명 보안 수단 |
-| security.method | string | Y | `password` 또는 `identity_verification` |
-| security.value | string | N | `password`일 때 비밀번호. `identity_verification`일 때는 전달하지 않음 |
-
-휴대폰 간편인증(`identity_verification`)은 국내 010 번호만 허용하며 서버에서 숫자만 남긴 형식으로 정규화됩니다.
-
-**Request 예시**
-
-```json
-{
-  "title": "업무 위탁 계약서",
-  "description": "2025년 프로젝트 관련 업무 위탁 계약",
-  "signing_order": "sequential",
-  "expires_at": "2025-01-31T23:59:59Z",
-  "participants": [
-    { "name": "홍길동", "email": "hong@example.com", "phone": "010-1234-5678", "role": "signer", "order": 1, "security": { "method": "identity_verification" } },
-    { "name": "김철수", "email": "kim@example.com", "role": "signer", "order": 2, "security": { "method": "password", "value": "1234" } }
-  ]
-}
-```
-
-**Response (201)**
-
-```json
-{
-  "success": true,
-  "data": {
-    "contract_id": "uuid-string",
-    "title": "업무 위탁 계약서",
-    "status": "draft"
-  },
-  "message": "계약서가 생성되었습니다."
-}
-```
-
----
 
 ### 계약서 상세 조회
 
@@ -710,17 +646,6 @@ X-API-Key: YOUR_API_KEY
 curl -X GET "https://api-snowsign.jtsnowball.com/public/v1/contracts" \
   -H "X-API-Key: YOUR_API_KEY"
 
-# 계약서 생성
-curl -X POST "https://api-snowsign.jtsnowball.com/public/v1/contracts" \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "업무 위탁 계약서",
-    "participants": [
-      {"name": "홍길동", "email": "hong@example.com", "phone": "010-1234-5678", "security": {"method": "identity_verification"}}
-    ]
-  }'
-
 # 계약서 발송
 curl -X POST "https://api-snowsign.jtsnowball.com/public/v1/contracts/{contract_id}/send" \
   -H "X-API-Key: YOUR_API_KEY" \
@@ -745,18 +670,8 @@ headers = {
 response = requests.get(f"{BASE_URL}/contracts", headers=headers)
 contracts = response.json()["data"]
 
-# 계약서 생성
-contract_data = {
-    "title": "업무 위탁 계약서",
-    "participants": [
-        {"name": "홍길동", "email": "hong@example.com", "phone": "010-1234-5678", "security": {"method": "identity_verification"}}
-    ]
-}
-response = requests.post(f"{BASE_URL}/contracts", headers=headers, json=contract_data)
-contract = response.json()["data"]
-contract_id = contract["contract_id"]
-
 # 계약서 발송
+contract_id = "CONTRACT_ID"
 response = requests.post(
     f"{BASE_URL}/contracts/{contract_id}/send",
     headers=headers,
@@ -780,19 +695,9 @@ const headers = {
 const response = await fetch(`${BASE_URL}/contracts`, { headers });
 const { data: contracts } = await response.json();
 
-// 계약서 생성
-const createRes = await fetch(`${BASE_URL}/contracts`, {
-  method: 'POST',
-  headers,
-  body: JSON.stringify({
-    title: '업무 위탁 계약서',
-    participants: [{ name: '홍길동', email: 'hong@example.com', phone: '010-1234-5678', security: { method: 'identity_verification' } }]
-  })
-});
-const { data: contract } = await createRes.json();
-
 // 계약서 발송
-await fetch(`${BASE_URL}/contracts/${contract.contract_id}/send`, {
+const contractId = 'CONTRACT_ID';
+await fetch(`${BASE_URL}/contracts/${contractId}/send`, {
   method: 'POST',
   headers,
   body: JSON.stringify({ message: '계약서 검토 부탁드립니다.' })

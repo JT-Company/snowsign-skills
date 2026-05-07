@@ -239,7 +239,7 @@ main() {
   echo
   echo "이제 MCP 클라이언트에서 ${SERVER_NAME} 서버의 SnowSign API 도구를 사용할 수 있습니다."
   echo "- snowsign_list_contracts"
-  echo "- snowsign_create_contract"
+  echo "- snowsign_create_contract_from_template"
   echo "- snowsign_get_api_reference_section"
 }
 
