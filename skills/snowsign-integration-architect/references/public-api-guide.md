@@ -145,8 +145,8 @@ X-API-Key: YOUR_API_KEY
     "status": "in_progress",
     "signing_order": "sequential",
     "participants": [
-      { "name": "홍길동", "email": "hong@example.com", "phone": "010-1234-5678", "status": "signed", "signed_at": "2025-01-06T14:30:00Z", "security_method": "identity_verification" },
-      { "name": "김철수", "email": "kim@example.com", "phone": null, "status": "pending", "signed_at": null, "security_method": "password" }
+      { "name": "홍길동", "email": "hong@example.com", "phone": "010-1234-5678", "status": "signed", "signed_at": "2025-01-06T14:30:00Z", "security_method": "identity_verification", "mobile_alimtalk_enabled": true },
+      { "name": "김철수", "email": "kim@example.com", "phone": null, "status": "pending", "signed_at": null, "security_method": "password", "mobile_alimtalk_enabled": false }
     ],
     "variables": {
       "계약금액": "3,000,000원",
@@ -170,6 +170,8 @@ X-API-Key: YOUR_API_KEY
 > **cancelled_at / cancelled_reason**: 계약이 취소된 경우(`status: cancelled`)에만 값이 채워지며, 그 외에는 `null`입니다.
 
 > **security_method**: 참여자별 서명 보안 수단입니다. `password`, `identity_verification`, `null` 중 하나이며, 본인인증 결과 식별자, CI 해시, PG 거래 ID 등 민감한 인증 결과값은 Public API 응답에 포함되지 않습니다.
+
+> **mobile_alimtalk_enabled**: 해당 참여자에게 모바일 알림톡 발송을 시도하는 계약인지 나타냅니다. 연락처가 없으면 알림톡은 발송되지 않습니다.
 
 ---
 
@@ -255,12 +257,18 @@ X-API-Key: YOUR_API_KEY
 
 서명 대기 중인 참여자에게 리마인더 이메일을 발송합니다.
 
+**Request Body**
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| message | string | N | 참여자에게 전달할 메시지 |
+| participant_uuids | array | N | 특정 참여자에게만 발송할 참여자 UUID 목록 |
+
 **Response**
 
 ```json
 {
   "success": true,
-  "data": null,
   "message": "리마인더가 발송되었습니다."
 }
 ```
@@ -418,8 +426,8 @@ X-API-Key: YOUR_API_KEY
       "signing_order": "sequential",
       "deadline_days": 7,
       "signers": [
-        { "role_name": "근로자", "signing_order": 1 },
-        { "role_name": "회사", "signing_order": 2 }
+        { "role_name": "근로자", "signing_order": 1, "security_method": "easy_cert", "mobile_alimtalk_enabled": true },
+        { "role_name": "회사", "signing_order": 2, "security_method": "password", "mobile_alimtalk_enabled": false }
       ]
     }
   ],
@@ -453,8 +461,8 @@ X-API-Key: YOUR_API_KEY
     "signing_order": "sequential",
     "deadline_days": 7,
     "signers": [
-      { "uuid": "signer-uuid-1", "role_name": "근로자", "signing_order": 1, "security_method": "easy_cert" },
-      { "uuid": "signer-uuid-2", "role_name": "회사", "signing_order": 2, "security_method": "password" }
+      { "uuid": "signer-uuid-1", "role_name": "근로자", "signing_order": 1, "security_method": "easy_cert", "mobile_alimtalk_enabled": true },
+      { "uuid": "signer-uuid-2", "role_name": "회사", "signing_order": 2, "security_method": "password", "mobile_alimtalk_enabled": false }
     ],
     "signature_fields": [
       {
@@ -469,21 +477,41 @@ X-API-Key: YOUR_API_KEY
         "is_required": true,
         "label": null,
         "display_order": 1,
-        "date_display_format": null
+        "date_precision": null,
+        "date_format_pattern": null,
+        "fill_background": null
       }
     ],
     "variables": [
       {
         "name": "계약시작일",
         "label": "계약시작일",
+        "value_type": "date",
         "default_value": null,
-        "is_required": true
+        "is_required": false,
+        "date_precision": "day",
+        "date_format_pattern": "YYYY년 MM월 DD일",
+        "fill_background": true
+      },
+      {
+        "name": "개인정보동의",
+        "label": "개인정보동의",
+        "value_type": "checkbox",
+        "default_value": null,
+        "is_required": false,
+        "date_precision": null,
+        "date_format_pattern": null,
+        "fill_background": false
       },
       {
         "name": "급여",
         "label": "급여",
+        "value_type": "text",
         "default_value": "3,000,000원",
-        "is_required": true
+        "is_required": false,
+        "date_precision": null,
+        "date_format_pattern": null,
+        "fill_background": false
       }
     ]
   }
@@ -491,6 +519,9 @@ X-API-Key: YOUR_API_KEY
 ```
 
 `signers[].security_method`는 템플릿 역할에 저장된 서명 보안 정책입니다. 값은 `email`, `password`, `easy_cert` 중 하나이며, 값이 없으면 `email`과 동일하게 처리됩니다.
+`signers[].mobile_alimtalk_enabled`는 템플릿 역할 기반 계약 생성 시 해당 참여자에게 모바일 알림톡을 보낼지 여부입니다.
+`signature_fields`에는 `type: "variable"` 필드가 제외됩니다. 변수 목록은 `variables`에 동일 변수명 중복 제거 후 반환됩니다.
+`variables[].value_type`은 `text`, `checkbox`, `date` 중 하나입니다. 날짜 변수는 `date_precision`, `date_format_pattern`, `fill_background` 메타를 함께 사용합니다.
 
 ---
 
@@ -528,7 +559,7 @@ X-API-Key: YOUR_API_KEY
 | title | string | Y | 계약서 제목 |
 | description | string | N | 계약서 설명 |
 | participants | array | Y | 참여자 목록 (역할 매핑) |
-| variables | object | N | 템플릿 변수 값 (키: 변수명, 값: 텍스트) |
+| variables | object | N | 템플릿 변수 값. 텍스트 변수는 문자열, 날짜 변수는 ISO 날짜/연월 문자열, 체크박스 변수는 boolean |
 | signing_order | string | N | 서명 순서 (템플릿 기본값 사용 시 생략) |
 
 **participants 항목**
@@ -538,18 +569,27 @@ X-API-Key: YOUR_API_KEY
 | name | string | Y | 참여자 이름 |
 | email | string | Y | 참여자 이메일 |
 | phone | string | N | 참여자 휴대폰 번호. 휴대폰 간편인증 사용 시 필수 |
+| mobile_alimtalk_enabled | boolean | N | 모바일 알림톡 발송 여부. 생략 시 템플릿 역할 정책 사용 |
 | role | string | Y | 템플릿에 정의된 역할명 (예: "근로자", "회사") |
-| order | integer | N | 서명 순서 |
 | security | object | 조건부 | 템플릿 역할이 비밀번호 보호이면 필수. `{ "method": "password", "value": "..." }`로 서명 비밀번호를 전달합니다. 이메일/간편인증 역할에는 전달하지 않습니다. |
 
 **variables 사용법**
 
 - 템플릿 편집 화면에서 "변수" 타입 입력칸을 PDF 문서 위에 배치하고 변수명을 지정합니다.
 - 동일한 변수명으로 여러 위치에 배치할 수 있으며, 하나의 값을 전달하면 모든 위치에 동일하게 적용됩니다.
-- API 호출 시 `variables` 객체에 `{ "변수명": "치환할 값" }` 형식으로 전달합니다.
+- 텍스트 변수는 `variables` 객체에 `{ "변수명": "치환할 값" }` 형식으로 전달합니다.
+- 날짜 변수는 `date_precision`이 `day`이면 `YYYY-MM-DD`, `month`이면 `YYYY-MM` 형식으로 전달합니다.
+- 체크박스 변수는 `{ "변수명": true }` 또는 `{ "변수명": false }`로 전달합니다.
 - 계약서 생성 시 해당 위치에 값이 자동으로 입력되어 PDF에 렌더링됩니다.
-- 변수에 기본값이 설정된 경우, API에서 값을 전달하지 않으면 기본값이 적용됩니다.
+- 텍스트 변수에 기본값이 설정된 경우, API에서 값을 전달하지 않으면 기본값이 적용됩니다.
+- 날짜 변수와 체크박스 변수는 기본값을 사용하지 않습니다.
 - 템플릿에 정의된 변수 목록은 `GET /v1/templates/{id}` 응답의 `variables` 필드에서 확인할 수 있습니다 (동일 변수명은 하나로 통합되어 반환).
+
+**모바일 알림톡**
+
+- 템플릿 역할 또는 참여자 요청의 `mobile_alimtalk_enabled`가 true인 경우에만 서명 요청/완료 알림톡을 발송합니다.
+- 휴대폰 간편인증 역할은 `phone`이 필수입니다. 모바일 알림톡만 켜진 역할은 `phone`이 선택이지만, 비어 있으면 해당 참여자 알림톡은 발송되지 않습니다.
+- 알림톡 본문에 포함되는 발송/마감/완료 시각은 KST 기준입니다.
 
 **Request 예시**
 
@@ -557,11 +597,12 @@ X-API-Key: YOUR_API_KEY
 {
   "title": "홍길동 근로계약서",
   "participants": [
-    { "name": "홍길동", "email": "hong@example.com", "phone": "010-1234-5678", "role": "근로자", "order": 1 },
-    { "name": "스노우싸인(주)", "email": "hr@snowsign.io", "role": "회사", "order": 2, "security": { "method": "password", "value": "1234" } }
+    { "name": "홍길동", "email": "hong@example.com", "phone": "010-1234-5678", "role": "근로자", "mobile_alimtalk_enabled": true },
+    { "name": "스노우싸인(주)", "email": "hr@snowsign.io", "role": "회사", "security": { "method": "password", "value": "1234" } }
   ],
   "variables": {
     "계약시작일": "2025-02-01",
+    "개인정보동의": true,
     "급여": "3,500,000원"
   }
 }
@@ -736,11 +777,12 @@ await fetch(`${BASE_URL}/contracts/${contractId}/send`, {
 | signature | 서명란 |
 | name | 이름 필드 |
 | text | 텍스트 입력 |
+| date | 날짜 입력 |
 | checkbox | 체크박스 |
-| dropdown | 드롭다운 선택 |
+| stamp | 인감 도장 |
 | variable | 템플릿 변수 (API로 값 주입, 서명자 입력 불가) |
 
 ---
 
-*최종 수정: 2026-02-14*
-*문서 버전: 1.2*
+*최종 수정: 2026-05-30*
+*문서 버전: 1.3*

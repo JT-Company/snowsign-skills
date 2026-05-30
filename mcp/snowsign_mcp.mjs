@@ -7,7 +7,7 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 
 const SERVER_NAME = "snowsign";
-const SERVER_VERSION = "0.2.2";
+const SERVER_VERSION = "0.2.3";
 const DEFAULT_BASE_URL = "https://api-snowsign.jtsnowball.com/public/v1";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -207,6 +207,7 @@ const TOOLS = [
     inputSchema: objectSchema({
       contract_id: { type: "string", description: "계약 ID입니다." },
       message: { type: "string", description: "리마인더 메시지입니다." },
+      participant_uuids: { type: "array", items: { type: "string" }, description: "특정 참여자에게만 보낼 참여자 UUID 목록입니다. 생략하면 전체 미서명 참여자에게 보냅니다." },
     }, ["contract_id"]),
   },
   {
@@ -310,7 +311,9 @@ async function callTool(name, args) {
     return jsonText(await apiRequest("POST", `/contracts/${encodeURIComponent(args.contract_id)}/cancel`, { body }));
   }
   if (name === "snowsign_remind_contract") {
-    const body = args.message ? { message: args.message } : {};
+    const body = {};
+    if (args.message) body.message = args.message;
+    if (args.participant_uuids) body.participant_uuids = args.participant_uuids;
     return jsonText(await apiRequest("POST", `/contracts/${encodeURIComponent(args.contract_id)}/remind`, { body }));
   }
   if (name === "snowsign_download_contract") {
