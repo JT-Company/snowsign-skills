@@ -53,7 +53,7 @@
 ```json
 {
   "event": "test",
-  "timestamp": "2025-01-06T10:00:00Z",
+  "timestamp": "2025-01-06T10:00:00",
   "data": {
     "message": "This is a test webhook event"
   }
@@ -91,10 +91,12 @@
 ```json
 {
   "event": "이벤트_타입",
-  "timestamp": "2025-01-06T10:00:00Z",
+  "timestamp": "2025-01-06T10:00:00",
   "data": { }
 }
 ```
+
+`timestamp`와 `*_at` 시각 필드는 UTC 기준입니다.
 
 **HTTP 헤더**
 
@@ -111,12 +113,12 @@
 ```json
 {
   "event": "contract.sent",
-  "timestamp": "2025-01-06T10:00:00Z",
+  "timestamp": "2025-01-06T10:00:00",
   "data": {
     "contract_id": "uuid-string",
     "title": "업무 위탁 계약서",
-    "sent_at": "2025-01-06T10:00:00Z",
-    "expires_at": "2025-01-31T23:59:59Z",
+    "sent_at": "2025-01-06T10:00:00",
+    "expires_at": "2025-01-31T23:59:59",
     "participants": [
       { "name": "홍길동", "email": "hong@example.com", "security_method": "identity_verification" },
       { "name": "김철수", "email": "kim@example.com", "security_method": "password" }
@@ -132,12 +134,12 @@
 ```json
 {
   "event": "contract.viewed",
-  "timestamp": "2025-01-06T11:00:00Z",
+  "timestamp": "2025-01-06T11:00:00",
   "data": {
     "contract_id": "uuid-string",
     "title": "업무 위탁 계약서",
     "participant": { "name": "홍길동", "email": "hong@example.com", "security_method": "identity_verification" },
-    "viewed_at": "2025-01-06T11:00:00Z"
+    "viewed_at": "2025-01-06T11:00:00"
   }
 }
 ```
@@ -149,12 +151,12 @@
 ```json
 {
   "event": "participant.signed",
-  "timestamp": "2025-01-06T14:30:00Z",
+  "timestamp": "2025-01-06T14:30:00",
   "data": {
     "contract_id": "uuid-string",
     "title": "업무 위탁 계약서",
     "participant": { "name": "홍길동", "email": "hong@example.com", "security_method": "identity_verification" },
-    "signed_at": "2025-01-06T14:30:00Z",
+    "signed_at": "2025-01-06T14:30:00",
     "all_signed": false,
     "signed_count": 1,
     "total_count": 2
@@ -169,13 +171,13 @@
 ```json
 {
   "event": "participant.declined",
-  "timestamp": "2025-01-06T14:30:00Z",
+  "timestamp": "2025-01-06T14:30:00",
   "data": {
     "contract_id": "uuid-string",
     "title": "업무 위탁 계약서",
     "participant": { "name": "홍길동", "email": "hong@example.com", "security_method": "identity_verification" },
     "reason": "계약 조건에 동의하지 않습니다.",
-    "declined_at": "2025-01-06T14:30:00Z"
+    "declined_at": "2025-01-06T14:30:00"
   }
 }
 ```
@@ -187,14 +189,14 @@
 ```json
 {
   "event": "contract.completed",
-  "timestamp": "2025-01-06T15:00:00Z",
+  "timestamp": "2025-01-06T15:00:00",
   "data": {
     "contract_id": "uuid-string",
     "title": "업무 위탁 계약서",
-    "completed_at": "2025-01-06T15:00:00Z",
+    "completed_at": "2025-01-06T15:00:00",
     "participants": [
-      { "name": "홍길동", "email": "hong@example.com", "security_method": "identity_verification", "signed_at": "2025-01-06T14:30:00Z" },
-      { "name": "김철수", "email": "kim@example.com", "security_method": "password", "signed_at": "2025-01-06T15:00:00Z" }
+      { "name": "홍길동", "email": "hong@example.com", "security_method": "identity_verification", "signed_at": "2025-01-06T14:30:00" },
+      { "name": "김철수", "email": "kim@example.com", "security_method": "password", "signed_at": "2025-01-06T15:00:00" }
     ],
     "download_url": "https://..."
   }
@@ -212,11 +214,11 @@
 ```json
 {
   "event": "contract.cancelled",
-  "timestamp": "2025-01-06T12:00:00Z",
+  "timestamp": "2025-01-06T12:00:00",
   "data": {
     "contract_id": "uuid-string",
     "title": "업무 위탁 계약서",
-    "cancelled_at": "2025-01-06T12:00:00Z",
+    "cancelled_at": "2025-01-06T12:00:00",
     "reason": "고객 요청으로 취소"
   }
 }
@@ -229,11 +231,11 @@
 ```json
 {
   "event": "contract.expired",
-  "timestamp": "2025-01-31T23:59:59Z",
+  "timestamp": "2025-01-31T23:59:59",
   "data": {
     "contract_id": "uuid-string",
     "title": "업무 위탁 계약서",
-    "expired_at": "2025-01-31T23:59:59Z"
+    "expired_at": "2025-01-31T23:59:59"
   }
 }
 ```
@@ -250,7 +252,7 @@ signature = HMAC-SHA256(시크릿_키, 요청_본문_raw_body)
 
 **검증 순서:**
 1. `X-Webhook-Signature` 헤더 추출
-2. 요청 본문(raw body)을 시크릿 키로 HMAC-SHA256 해시
+2. 수신한 요청 본문(raw body)을 파싱하거나 재직렬화하지 않고 그대로 시크릿 키로 HMAC-SHA256 해시
 3. 계산된 서명과 헤더 서명을 안전하게 비교 (timing-safe)
 
 ### Python
@@ -415,5 +417,5 @@ app.listen(3000, () => console.log('Webhook server running on port 3000'));
 
 ---
 
-*최종 수정: 2026-04-18*
-*문서 버전: 1.4*
+*최종 수정: 2026-05-30*
+*문서 버전: 1.5*
