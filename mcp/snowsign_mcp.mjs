@@ -7,7 +7,7 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 
 const SERVER_NAME = "snowsign";
-const SERVER_VERSION = "0.2.3";
+const SERVER_VERSION = "0.3.0";
 const DEFAULT_BASE_URL = "https://api-snowsign.jtsnowball.com/public/v1";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -107,6 +107,60 @@ async function apiRequest(method, apiPath, { query, body, outputPath } = {}) {
   };
 }
 
+function resolvePath(filePath) {
+  return path.resolve(filePath.replace(/^~(?=$|\/|\\)/, os.homedir()));
+}
+
+async function uploadPdfFile({ file_path, purpose, filename, content_type }) {
+  const target = resolvePath(file_path);
+  const stat = fs.statSync(target);
+  if (!stat.isFile()) {
+    throw new Error(`PDF 파일이 아닙니다: ${target}`);
+  }
+
+  const uploadSession = await apiRequest("POST", "/uploads", {
+    body: {
+      purpose,
+      filename: filename || path.basename(target),
+      content_type: content_type || "application/pdf",
+      size_bytes: stat.size,
+    },
+  });
+
+  const upload = uploadSession.data || uploadSession;
+  if (!upload.upload_id || !upload.upload_url || !upload.fields) {
+    throw new Error(`업로드 세션 응답 형식이 올바르지 않습니다: ${JSON.stringify(uploadSession)}`);
+  }
+
+  const form = new FormData();
+  for (const [key, value] of Object.entries(upload.fields)) {
+    form.append(key, String(value));
+  }
+
+  const bytes = fs.readFileSync(target);
+  const blob = new Blob([bytes], { type: content_type || "application/pdf" });
+  form.append("file", blob, filename || path.basename(target));
+
+  const response = await fetch(upload.upload_url, {
+    method: "POST",
+    body: form,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(JSON.stringify({ status: response.status, error: errorText }));
+  }
+
+  return {
+    success: true,
+    upload_id: upload.upload_id,
+    purpose,
+    filename: filename || path.basename(target),
+    size_bytes: stat.size,
+    expires_at: upload.expires_at,
+  };
+}
+
 function listReferenceSections() {
   const guide = fs.readFileSync(apiGuidePath, "utf8");
   return guide
@@ -184,6 +238,40 @@ const TOOLS = [
     inputSchema: objectSchema({
       contract_id: { type: "string", description: "계약 ID입니다." },
     }, ["contract_id"]),
+  },
+  {
+    name: "snowsign_create_upload_session",
+    description: "SnowSign PDF 업로드 세션을 생성합니다. 반환된 upload_id를 PDF 계약/템플릿 생성 요청의 document_upload_id로 사용합니다.",
+    inputSchema: objectSchema({
+      purpose: { type: "string", description: "contract_document 또는 template_document 중 하나입니다." },
+      filename: { type: "string", description: "원본 PDF 파일명입니다." },
+      content_type: { type: "string", description: "application/pdf를 사용합니다." },
+      size_bytes: { type: "integer", description: "업로드 예정 파일 크기입니다. 최대 50MB입니다." },
+    }, ["purpose", "filename", "content_type", "size_bytes"]),
+  },
+  {
+    name: "snowsign_upload_pdf",
+    description: "로컬 PDF 파일로 업로드 세션을 만들고 presigned POST 업로드까지 수행합니다. 반환된 upload_id를 PDF 계약/템플릿 생성에 사용하세요.",
+    inputSchema: objectSchema({
+      file_path: { type: "string", description: "업로드할 로컬 PDF 경로입니다." },
+      purpose: { type: "string", description: "contract_document 또는 template_document 중 하나입니다." },
+      filename: { type: "string", description: "SnowSign에 저장할 원본 파일명입니다. 생략하면 로컬 파일명을 사용합니다." },
+      content_type: { type: "string", description: "기본값은 application/pdf입니다." },
+    }, ["file_path", "purpose"]),
+  },
+  {
+    name: "snowsign_run_upload_diagnostics",
+    description: "업로드된 PDF의 사전 진단 결과를 조회합니다. 계약/템플릿 생성 전 사용자에게 PDF 경고를 보여줄 때 사용합니다.",
+    inputSchema: objectSchema({
+      upload_id: { type: "string", description: "업로드 세션 ID입니다." },
+    }, ["upload_id"]),
+  },
+  {
+    name: "snowsign_create_contract_from_pdf",
+    description: "업로드 PDF와 필드 위치 정보로 SnowSign 계약서를 생성합니다. send_immediately=true이면 생성 후 즉시 발송됩니다.",
+    inputSchema: objectSchema({
+      contract: { type: "object", description: "POST /v1/contracts 요청 본문입니다. document_upload_id, participants, signature_fields를 포함합니다." },
+    }, ["contract"]),
   },
   {
     name: "snowsign_send_contract",
@@ -264,6 +352,13 @@ const TOOLS = [
     }, ["template_id"]),
   },
   {
+    name: "snowsign_create_template_from_pdf",
+    description: "업로드 PDF와 역할/필드 위치 정보로 SnowSign 템플릿을 생성합니다.",
+    inputSchema: objectSchema({
+      template: { type: "object", description: "POST /v1/templates 요청 본문입니다. document_upload_id, signers, signature_fields를 포함합니다." },
+    }, ["template"]),
+  },
+  {
     name: "snowsign_create_contract_from_template",
     description: "SnowSign 템플릿으로 계약 초안을 생성합니다. 먼저 snowsign_get_template으로 signers[].security_method를 확인하세요. password 역할은 participants[].security={method:'password', value:'...'}가 필요하고, easy_cert 역할은 phone만 전달하며 security를 전달하지 않습니다.",
     inputSchema: objectSchema({
@@ -302,6 +397,23 @@ async function callTool(name, args) {
   if (name === "snowsign_list_contracts") return jsonText(await apiRequest("GET", "/contracts", { query: args }));
   if (name === "snowsign_get_contract") return jsonText(await apiRequest("GET", `/contracts/${encodeURIComponent(args.contract_id)}`));
   if (name === "snowsign_get_contract_status") return jsonText(await apiRequest("GET", `/contracts/${encodeURIComponent(args.contract_id)}/status`));
+  if (name === "snowsign_create_upload_session") {
+    return jsonText(await apiRequest("POST", "/uploads", {
+      body: {
+        purpose: args.purpose,
+        filename: args.filename,
+        content_type: args.content_type,
+        size_bytes: args.size_bytes,
+      },
+    }));
+  }
+  if (name === "snowsign_upload_pdf") return jsonText(await uploadPdfFile(args));
+  if (name === "snowsign_run_upload_diagnostics") {
+    return jsonText(await apiRequest("POST", `/uploads/${encodeURIComponent(args.upload_id)}/diagnostics`));
+  }
+  if (name === "snowsign_create_contract_from_pdf") {
+    return jsonText(await apiRequest("POST", "/contracts", { body: args.contract }));
+  }
   if (name === "snowsign_send_contract") {
     const body = args.message ? { message: args.message } : {};
     return jsonText(await apiRequest("POST", `/contracts/${encodeURIComponent(args.contract_id)}/send`, { body }));
@@ -332,6 +444,9 @@ async function callTool(name, args) {
   if (name === "snowsign_get_template") return jsonText(await apiRequest("GET", `/templates/${encodeURIComponent(args.template_id)}`));
   if (name === "snowsign_download_template") {
     return jsonText(await apiRequest("GET", `/templates/${encodeURIComponent(args.template_id)}/download`, { outputPath: args.output_path }));
+  }
+  if (name === "snowsign_create_template_from_pdf") {
+    return jsonText(await apiRequest("POST", "/templates", { body: args.template }));
   }
   if (name === "snowsign_create_contract_from_template") {
     return jsonText(await apiRequest("POST", `/templates/${encodeURIComponent(args.template_id)}/create-contract`, { body: args.contract }));
@@ -368,7 +483,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "SnowSign MCP 도구로 계약 조회, 템플릿 기반 생성, 발송, 취소, 리마인더, 다운로드를 수행하세요. 상태 변경 작업은 실행 전 사용자 확인을 받으세요. 계약 생성은 POST /contracts가 아니라 템플릿 기반 생성 도구만 사용하세요. 템플릿으로 계약을 생성할 때는 먼저 템플릿 상세의 signers[].security_method를 확인하고, password 역할에만 participants[].security 비밀번호 값을 전달하며 easy_cert 역할에는 phone만 전달하세요.",
+            text: "SnowSign MCP 도구로 계약 조회, 템플릿/PDF 기반 생성, 발송, 취소, 리마인더, 다운로드를 수행하세요. 상태 변경 작업과 send_immediately=true 계약 생성은 실행 전 사용자 확인을 받으세요. PDF 기반 생성은 snowsign_upload_pdf 또는 snowsign_create_upload_session으로 document_upload_id를 준비한 뒤 snowsign_create_contract_from_pdf를 사용하세요. 템플릿으로 계약을 생성할 때는 먼저 템플릿 상세의 signers[].security_method를 확인하고, password 역할에만 participants[].security 비밀번호 값을 전달하며 easy_cert 역할에는 phone만 전달하세요.",
           },
         }],
       };
@@ -381,7 +496,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "snowsign_get_api_reference_section 도구로 필요한 API 섹션을 확인한 뒤 SnowSign Public API 연동 코드를 작성하세요. 템플릿 생성 플로우에서는 GET /v1/templates/{id} 응답의 signers[].security_method가 보안 정책의 기준입니다.",
+            text: "snowsign_get_api_reference_section 도구로 필요한 API 섹션을 확인한 뒤 SnowSign Public API 연동 코드를 작성하세요. 외부 PDF 연동은 POST /v1/uploads로 upload_id를 만들고 PDF를 업로드한 뒤 POST /v1/contracts 또는 POST /v1/templates의 document_upload_id로 전달합니다. 템플릿 기반 계약 생성 플로우에서는 GET /v1/templates/{id} 응답의 signers[].security_method가 보안 정책의 기준입니다.",
           },
         }],
       };

@@ -1,6 +1,6 @@
 ---
 name: snowsign-contract-operator
-description: 스노우싸인 계약 조회, 템플릿 기반 생성, 발송, 취소, 리마인드, 다운로드를 API로 직접 처리하는 운영형 스킬.
+description: 스노우싸인 계약 조회, 템플릿/PDF 기반 생성, 발송, 취소, 리마인드, 다운로드를 API로 직접 처리하는 운영형 스킬.
 disable-model-invocation: false
 allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 ---
@@ -39,6 +39,10 @@ test -n "$SNOWSIGN_API_KEY"
 | 계약 목록 조회 | `snowsign_list_contracts` |
 | 계약 상세 조회 | `snowsign_get_contract` |
 | 계약 상태 조회 | `snowsign_get_contract_status` |
+| PDF 업로드 세션 생성 | `snowsign_create_upload_session` |
+| 로컬 PDF 업로드 | `snowsign_upload_pdf` |
+| 업로드 PDF 진단 | `snowsign_run_upload_diagnostics` |
+| PDF로 계약 생성 | `snowsign_create_contract_from_pdf` |
 | 계약 발송 | `snowsign_send_contract` |
 | 계약 취소 | `snowsign_cancel_contract` |
 | 리마인더 발송 | `snowsign_remind_contract` |
@@ -49,6 +53,7 @@ test -n "$SNOWSIGN_API_KEY"
 | 템플릿 목록 조회 | `snowsign_list_templates` |
 | 템플릿 상세 조회 | `snowsign_get_template` |
 | 템플릿 파일 다운로드 | `snowsign_download_template` |
+| PDF로 템플릿 생성 | `snowsign_create_template_from_pdf` |
 | 템플릿으로 계약 생성 | `snowsign_create_contract_from_template` |
 | API 문서 섹션 확인 | `snowsign_get_api_reference_section` |
 
@@ -63,6 +68,9 @@ test -n "$SNOWSIGN_API_KEY"
 | 특정 계약 상세 확인 | `snowsign_get_contract` | `GET /contracts/{contract_id}` |
 | 템플릿 목록/상세 확인 | `snowsign_list_templates`, `snowsign_get_template` | `GET /templates`, `GET /templates/{template_id}` |
 | 새 계약서 만들어줘, 템플릿으로 계약서 만들어줘 | `snowsign_create_contract_from_template` | `POST /templates/{template_id}/create-contract` |
+| 이 PDF로 계약서 만들어줘 | `snowsign_upload_pdf`, `snowsign_create_contract_from_pdf` | `POST /uploads`, `POST /contracts` |
+| 이 PDF로 템플릿 만들어줘 | `snowsign_upload_pdf`, `snowsign_create_template_from_pdf` | `POST /uploads`, `POST /templates` |
+| 업로드 PDF 검사해줘 | `snowsign_run_upload_diagnostics` | `POST /uploads/{upload_id}/diagnostics` |
 | 계약서 보내줘 | `snowsign_send_contract` | `POST /contracts/{contract_id}/send` |
 | 계약서 취소해줘 | `snowsign_cancel_contract` | `POST /contracts/{contract_id}/cancel` |
 | 리마인더 보내줘 | `snowsign_remind_contract` | `POST /contracts/{contract_id}/remind` |
@@ -77,6 +85,8 @@ test -n "$SNOWSIGN_API_KEY"
 
 - 순차 서명: `signing_order: sequential`이면 참여자별 `order`가 필요하다.
 - 템플릿 계약 생성: `template_id`, 참여자별 템플릿 역할명(`role`), 필수 변수 값이 필요하다.
+- PDF 계약 생성: PDF 파일 또는 `document_upload_id`, 참여자, `signature_fields` 좌표가 필요하다.
+- PDF 템플릿 생성: PDF 파일 또는 `document_upload_id`, 역할(`signers`), 필요한 `signature_fields` 좌표가 필요하다.
 - 발송, 취소, 리마인더: `contract_id`가 필요하다.
 - 다운로드: `contract_id`가 필요하고 계약 상태가 `completed`여야 한다.
 
@@ -86,6 +96,8 @@ test -n "$SNOWSIGN_API_KEY"
 - 계약 취소: 계약 상태가 바뀐다.
 - 리마인더 발송: 참여자에게 이메일이 발송된다.
 - 템플릿 기반 계약 생성: 새 리소스가 생성된다.
+- PDF 기반 계약/템플릿 생성: 새 리소스가 생성된다.
+- PDF 계약 생성에서 `send_immediately: true`이면 생성과 발송이 함께 수행되고 월간 계약 사용량이 차감된다.
 
 사용자 요청이 모호하면 실행 전 확인한다. 예: "이 계약 처리해줘"는 조회인지 발송인지 물어본다.
 
@@ -105,6 +117,8 @@ test -n "$SNOWSIGN_API_KEY"
 MCP 도구를 사용할 때도 상태 변경 작업은 사용자가 명시적으로 요청했을 때만 실행한다. 특히 다음 도구는 실행 전 요청 의도가 분명해야 한다.
 
 - `snowsign_create_contract_from_template`
+- `snowsign_create_contract_from_pdf`
+- `snowsign_create_template_from_pdf`
 - `snowsign_send_contract`
 - `snowsign_cancel_contract`
 - `snowsign_remind_contract`
@@ -172,6 +186,38 @@ curl -sS -X POST "$BASE_URL/templates/{template_id}/create-contract" \
       "계약시작일": "2025-02-01",
       "급여": "3,500,000원"
     }
+  }'
+```
+
+## PDF 기반 생성
+
+PDF 파일에서 바로 계약/템플릿을 만들 때는 먼저 업로드를 완료하고 `upload_id`를 생성 요청의 `document_upload_id`로 전달한다.
+
+- 로컬 파일이 있으면 MCP의 `snowsign_upload_pdf`를 우선 사용한다.
+- 브라우저/외부 시스템이 직접 업로드해야 하면 `snowsign_create_upload_session`으로 presigned POST 정보를 발급한다.
+- PDF 경고를 미리 보여줘야 할 때만 `snowsign_run_upload_diagnostics`를 호출한다.
+- 좌표는 PDF.js `getViewport({ scale: 1 })` 기준 pixel 좌표이며 `page_number`는 1부터 시작한다.
+- `send_immediately: true`는 생성 후 즉시 발송이므로 사용자 의도가 분명할 때만 실행한다.
+
+계약 생성 fallback:
+
+```bash
+curl -sS -X POST "$BASE_URL/contracts" \
+  -H "X-API-Key: $SNOWSIGN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "외주 계약서",
+    "document_upload_id": "upl_abc123",
+    "participants": [{ "role": "계약자", "name": "홍길동", "email": "hong@example.com" }],
+    "signature_fields": [{
+      "participant": "계약자",
+      "type": "signature",
+      "page_number": 1,
+      "position_x": 410,
+      "position_y": 710,
+      "width": 120,
+      "height": 50
+    }]
   }'
 ```
 

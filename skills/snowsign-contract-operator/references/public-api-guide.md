@@ -9,6 +9,10 @@
   - [계약서 목록 조회](#계약서-목록-조회)
   - [계약서 상세 조회](#계약서-상세-조회)
   - [계약서 상태 조회](#계약서-상태-조회)
+  - [템플릿 계약서 생성](#템플릿-계약서-생성)
+  - [PDF 업로드 세션 생성](#pdf-업로드-세션-생성)
+  - [PDF 업로드 진단](#pdf-업로드-진단)
+  - [PDF 계약서 생성](#pdf-계약서-생성)
   - [계약서 발송](#계약서-발송)
   - [계약서 취소](#계약서-취소)
   - [리마인더 발송](#리마인더-발송)
@@ -17,10 +21,10 @@
   - [계약서 일괄 다운로드](#계약서-일괄-다운로드)
   - [감사추적인증서 일괄 다운로드](#감사추적인증서-일괄-다운로드)
 - [템플릿 API](#템플릿-api)
+  - [PDF 템플릿 생성](#pdf-템플릿-생성)
   - [템플릿 목록 조회](#템플릿-목록-조회)
   - [템플릿 상세 조회](#템플릿-상세-조회)
   - [템플릿 원본 파일 다운로드](#템플릿-원본-파일-다운로드)
-  - [템플릿으로 계약서 생성](#템플릿으로-계약서-생성)
 - [에러 처리](#에러-처리)
 - [Rate Limiting](#rate-limiting)
 - [샘플 코드](#샘플-코드)
@@ -70,6 +74,10 @@ X-API-Key: YOUR_API_KEY
 | GET | [/v1/contracts](#계약서-목록-조회) | 계약서 목록 조회 |
 | GET | [/v1/contracts/{id}](#계약서-상세-조회) | 계약서 상세 조회 |
 | GET | [/v1/contracts/{id}/status](#계약서-상태-조회) | 계약서 상태 조회 |
+| POST | [/v1/templates/{id}/create-contract](#템플릿-계약서-생성) | 템플릿 기반 계약서 생성 |
+| POST | [/v1/uploads](#pdf-업로드-세션-생성) | PDF 업로드 세션 생성 |
+| POST | [/v1/uploads/{id}/diagnostics](#pdf-업로드-진단) | 업로드 PDF 사전 진단(선택) |
+| POST | [/v1/contracts](#pdf-계약서-생성) | 업로드 PDF 기반 계약서 생성. `send_immediately=true`이면 즉시 발송 |
 | POST | [/v1/contracts/{id}/send](#계약서-발송) | 계약서 발송 |
 | POST | [/v1/contracts/{id}/cancel](#계약서-취소) | 계약서 취소 |
 | POST | [/v1/contracts/{id}/remind](#리마인더-발송) | 리마인더 이메일 발송 |
@@ -82,14 +90,23 @@ X-API-Key: YOUR_API_KEY
 
 | 메서드 | 엔드포인트 | 설명 |
 |--------|-----------|------|
+| POST | [/v1/templates](#pdf-템플릿-생성) | 업로드 PDF 기반 템플릿 생성 |
 | GET | [/v1/templates](#템플릿-목록-조회) | 템플릿 목록 조회 |
 | GET | [/v1/templates/{id}](#템플릿-상세-조회) | 템플릿 상세 조회 |
 | GET | [/v1/templates/{id}/download](#템플릿-원본-파일-다운로드) | 템플릿 원본 파일 다운로드 |
-| POST | [/v1/templates/{id}/create-contract](#템플릿으로-계약서-생성) | 템플릿 기반 계약서 생성 |
 
 ---
 
 ## 계약서 API
+
+외부 ERP/그룹웨어에서 PDF 문서를 SnowSign 계약/템플릿 생성에 연결할 때는 업로드 세션을 사용합니다. API Key는 서버에만 보관하고, 브라우저 SDK에는 노출하지 마세요.
+
+기본 흐름:
+
+1. ERP 서버가 `POST /v1/uploads`로 `upload_id`와 업로드 정보를 발급받습니다.
+2. 브라우저 또는 ERP 서버가 발급받은 업로드 정보로 PDF를 업로드합니다.
+3. ERP 서버가 `document_upload_id`와 필드 위치 정보를 계약/템플릿 생성 API에 전달합니다.
+4. SnowSign이 업로드된 PDF를 최종 검증한 뒤 계약서 또는 템플릿을 생성합니다.
 
 ### 계약서 목록 조회
 
@@ -197,6 +214,237 @@ X-API-Key: YOUR_API_KEY
 ```
 
 ---
+
+### 템플릿 계약서 생성
+
+`POST /v1/templates/{template_id}/create-contract`
+
+**Request Body**
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| title | string | Y | 계약서 제목 |
+| description | string | N | 계약서 설명 |
+| participants | array | Y | 참여자 목록 (역할 매핑) |
+| variables | object | N | 템플릿 변수 값. 텍스트 변수는 문자열, 날짜 변수는 ISO 날짜/연월 문자열, 체크박스 변수는 boolean |
+| signing_order | string | N | 서명 순서 (템플릿 기본값 사용 시 생략) |
+
+**participants 항목**
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| name | string | Y | 참여자 이름 |
+| email | string | Y | 참여자 이메일 |
+| phone | string | N | 참여자 휴대폰 번호. 휴대폰 간편인증 사용 시 필수 |
+| mobile_alimtalk_enabled | boolean | N | 모바일 알림톡 발송 여부. 생략 시 템플릿 역할 정책 사용 |
+| role | string | Y | 템플릿에 정의된 역할명 (예: "근로자", "회사") |
+| security | object | 조건부 | 템플릿 역할이 비밀번호 보호이면 필수. `{ "method": "password", "value": "..." }`로 서명 비밀번호를 전달합니다. 이메일/간편인증 역할에는 전달하지 않습니다. |
+
+**variables 사용법**
+
+- 템플릿 편집 화면에서 "변수" 타입 입력칸을 PDF 문서 위에 배치하고 변수명을 지정합니다.
+- 동일한 변수명으로 여러 위치에 배치할 수 있으며, 하나의 값을 전달하면 모든 위치에 동일하게 적용됩니다.
+- 텍스트 변수는 `variables` 객체에 `{ "변수명": "치환할 값" }` 형식으로 전달합니다.
+- 날짜 변수는 `date_precision`이 `day`이면 `YYYY-MM-DD`, `month`이면 `YYYY-MM` 형식으로 전달합니다.
+- 체크박스 변수는 `{ "변수명": true }` 또는 `{ "변수명": false }`로 전달합니다.
+- 계약서 생성 시 해당 위치에 값이 자동으로 입력되어 PDF에 렌더링됩니다.
+- 텍스트 변수에 기본값이 설정된 경우, API에서 값을 전달하지 않으면 기본값이 적용됩니다.
+- 날짜 변수와 체크박스 변수는 기본값을 사용하지 않습니다.
+- 템플릿에 정의된 변수 목록은 `GET /v1/templates/{id}` 응답의 `variables` 필드에서 확인할 수 있습니다 (동일 변수명은 하나로 통합되어 반환).
+
+**모바일 알림톡**
+
+- 템플릿 역할 또는 참여자 요청의 `mobile_alimtalk_enabled`가 true인 경우에만 서명 요청/완료 알림톡을 발송합니다.
+- 휴대폰 간편인증 역할은 `phone`이 필수입니다. 모바일 알림톡만 켜진 역할은 `phone`이 선택이지만, 비어 있으면 해당 참여자 알림톡은 발송되지 않습니다.
+- 알림톡 본문에 포함되는 발송/마감/완료 시각은 KST 기준입니다.
+
+**Request 예시**
+
+```json
+{
+  "title": "홍길동 근로계약서",
+  "participants": [
+    { "name": "홍길동", "email": "hong@example.com", "phone": "010-1234-5678", "role": "근로자", "mobile_alimtalk_enabled": true },
+    { "name": "스노우싸인(주)", "email": "hr@snowsign.io", "role": "회사", "security": { "method": "password", "value": "1234" } }
+  ],
+  "variables": {
+    "계약시작일": "2025-02-01",
+    "개인정보동의": true,
+    "급여": "3,500,000원"
+  }
+}
+```
+
+**Response (201)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "contract_id": "uuid-string",
+    "title": "홍길동 근로계약서",
+    "status": "draft"
+  },
+  "message": "계약서가 생성되었습니다."
+}
+```
+
+---
+
+### PDF 업로드 세션 생성
+
+`POST /v1/uploads`
+
+**Request Body**
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| purpose | string | Y | `contract_document` 또는 `template_document` |
+| filename | string | Y | 원본 파일명 |
+| content_type | string | Y | `application/pdf` |
+| size_bytes | integer | Y | 업로드 예정 파일 크기. 최대 50MB |
+
+**Response**
+
+```json
+{
+  "success": true,
+  "data": {
+    "upload_id": "upl_abc123",
+    "upload_url": "https://...",
+    "fields": {
+      "key": "...",
+      "Content-Type": "application/pdf"
+    },
+    "max_size_bytes": 52428800,
+    "allowed_content_types": ["application/pdf"],
+    "expires_at": "2026-06-11T04:00:00Z"
+  }
+}
+```
+
+**정책**
+
+- 업로드 세션은 10분 동안 유효합니다.
+- 응답의 `upload_url`과 `fields`는 PDF 업로드 요청에 그대로 사용합니다.
+
+### PDF 업로드 진단
+
+`POST /v1/uploads/{upload_id}/diagnostics`
+
+계약/템플릿 생성 전에 PDF 경고를 사용자에게 보여주고 싶은 경우에만 호출합니다. 계약/템플릿 생성 API는 이 API 호출 여부와 관계없이 업로드된 PDF를 다시 검증합니다.
+
+**Response**
+
+```json
+{
+  "success": true,
+  "data": {
+    "upload_id": "upl_abc123",
+    "pdf": {
+      "upload_policy": "allow",
+      "page_count": 2,
+      "render_profile": "fontFace",
+      "warnings": [],
+      "errors": []
+    }
+  }
+}
+```
+
+---
+
+### PDF 계약서 생성
+
+`POST /v1/contracts`
+
+업로드 PDF와 필드 위치 정보로 계약서를 생성합니다. `send_immediately=true`이면 생성 후 즉시 발송합니다.
+
+**Request Body 주요 필드**
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| title | string | Y | 계약서 제목 |
+| document_upload_id | string | Y | 업로드 세션 ID |
+| send_immediately | boolean | N | true이면 계약 생성 후 즉시 발송. 기본값 false |
+| participants | array | Y | 참여자 목록 |
+| signature_fields | array | Y | 입력칸/서명칸 위치 목록 |
+| variables | object | N | 변수 필드 값 |
+| integration | object | N | 외부 시스템 metadata |
+
+대부분의 경우 참여자는 `role` 하나로 필드와 매핑할 수 있습니다. 같은 역할명이 2명 이상이면 구분이 모호하므로 `key`와 `role_name`을 명시하세요.
+
+`signature_fields` 좌표는 PDF.js `getViewport({ scale: 1 })` 기준 pixel 좌표입니다. 원점은 페이지 좌상단이며, `page_number`는 1부터 시작합니다.
+
+**Request 예시**
+
+```json
+{
+  "title": "외주 계약서 - 홍길동",
+  "document_upload_id": "upl_abc123",
+  "signing_order": "parallel",
+  "send_immediately": true,
+  "message": "서명 부탁드립니다.",
+  "participants": [
+    {
+      "role": "근로자",
+      "name": "홍길동",
+      "email": "hong@example.com",
+      "phone": "010-1234-5678",
+      "security": { "method": "identity_verification" },
+      "mobile_alimtalk_enabled": false
+    }
+  ],
+  "signature_fields": [
+    {
+      "participant": "근로자",
+      "type": "signature",
+      "page_number": 2,
+      "position_x": 410,
+      "position_y": 710,
+      "width": 120,
+      "height": 50,
+      "position_unit": "pixel",
+      "is_required": true
+    },
+    {
+      "type": "variable",
+      "variable_name": "contract_amount",
+      "variable_value_type": "text",
+      "page_number": 1,
+      "position_x": 180,
+      "position_y": 240,
+      "width": 120,
+      "height": 18,
+      "fill_background": true
+    }
+  ],
+  "variables": {
+    "contract_amount": "3,000,000원"
+  },
+  "integration": {
+    "external_system": "customer-erp",
+    "external_id": "ERP-2026-0001",
+    "sdk_version": "1.0.0"
+  }
+}
+```
+
+**Response (201)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "contract_id": "uuid-string",
+    "title": "외주 계약서 - 홍길동",
+    "status": "pending",
+    "sent_at": "2026-06-11T03:20:00Z"
+  }
+}
+```
+
+`send_immediately`를 생략하거나 `false`로 보내면 초안만 생성됩니다. 즉시 발송 요청이 실패하면 계약서 생성과 사용량 차감도 함께 취소됩니다.
 
 ### 계약서 발송
 
@@ -401,6 +649,68 @@ X-API-Key: YOUR_API_KEY
 
 ## 템플릿 API
 
+### PDF 템플릿 생성
+
+`POST /v1/templates`
+
+업로드 PDF와 역할/필드 위치 정보로 SnowSign 템플릿을 생성합니다.
+
+**Request Body 주요 필드**
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| name | string | Y | 템플릿명 |
+| document_upload_id | string | Y | 업로드 세션 ID |
+| signing_order | string | N | `parallel` 또는 `sequential` |
+| deadline_days | integer | N | 기본 마감 기한 |
+| signers | array | Y | 역할 목록 |
+| signature_fields | array | N | 입력칸/서명칸 위치 목록 |
+| integration | object | N | 외부 시스템 metadata |
+
+대부분의 경우 템플릿 역할은 문자열 배열로 만들 수 있습니다. 같은 역할명이 2개 이상이면 구분이 모호하므로 `{ "key": "...", "role_name": "..." }` 형식을 사용하세요.
+
+**Request 예시**
+
+```json
+{
+  "name": "표준 외주계약서",
+  "document_upload_id": "upl_template_abc",
+  "signing_order": "parallel",
+  "deadline_days": 14,
+  "signers": ["근로자"],
+  "signature_fields": [
+    {
+      "role": "근로자",
+      "type": "signature",
+      "page_number": 2,
+      "position_x": 410,
+      "position_y": 710,
+      "width": 120,
+      "height": 50,
+      "position_unit": "pixel",
+      "is_required": true
+    }
+  ],
+  "integration": {
+    "external_system": "customer-erp",
+    "external_id": "ERP-TEMPLATE-001",
+    "sdk_version": "1.0.0"
+  }
+}
+```
+
+**Response (201)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "template_id": "uuid-string",
+    "name": "표준 외주계약서"
+  }
+}
+```
+
 ### 템플릿 목록 조회
 
 `GET /v1/templates`
@@ -548,80 +858,6 @@ X-API-Key: YOUR_API_KEY
 
 ---
 
-### 템플릿으로 계약서 생성
-
-`POST /v1/templates/{template_id}/create-contract`
-
-**Request Body**
-
-| 필드 | 타입 | 필수 | 설명 |
-|------|------|------|------|
-| title | string | Y | 계약서 제목 |
-| description | string | N | 계약서 설명 |
-| participants | array | Y | 참여자 목록 (역할 매핑) |
-| variables | object | N | 템플릿 변수 값. 텍스트 변수는 문자열, 날짜 변수는 ISO 날짜/연월 문자열, 체크박스 변수는 boolean |
-| signing_order | string | N | 서명 순서 (템플릿 기본값 사용 시 생략) |
-
-**participants 항목**
-
-| 필드 | 타입 | 필수 | 설명 |
-|------|------|------|------|
-| name | string | Y | 참여자 이름 |
-| email | string | Y | 참여자 이메일 |
-| phone | string | N | 참여자 휴대폰 번호. 휴대폰 간편인증 사용 시 필수 |
-| mobile_alimtalk_enabled | boolean | N | 모바일 알림톡 발송 여부. 생략 시 템플릿 역할 정책 사용 |
-| role | string | Y | 템플릿에 정의된 역할명 (예: "근로자", "회사") |
-| security | object | 조건부 | 템플릿 역할이 비밀번호 보호이면 필수. `{ "method": "password", "value": "..." }`로 서명 비밀번호를 전달합니다. 이메일/간편인증 역할에는 전달하지 않습니다. |
-
-**variables 사용법**
-
-- 템플릿 편집 화면에서 "변수" 타입 입력칸을 PDF 문서 위에 배치하고 변수명을 지정합니다.
-- 동일한 변수명으로 여러 위치에 배치할 수 있으며, 하나의 값을 전달하면 모든 위치에 동일하게 적용됩니다.
-- 텍스트 변수는 `variables` 객체에 `{ "변수명": "치환할 값" }` 형식으로 전달합니다.
-- 날짜 변수는 `date_precision`이 `day`이면 `YYYY-MM-DD`, `month`이면 `YYYY-MM` 형식으로 전달합니다.
-- 체크박스 변수는 `{ "변수명": true }` 또는 `{ "변수명": false }`로 전달합니다.
-- 계약서 생성 시 해당 위치에 값이 자동으로 입력되어 PDF에 렌더링됩니다.
-- 텍스트 변수에 기본값이 설정된 경우, API에서 값을 전달하지 않으면 기본값이 적용됩니다.
-- 날짜 변수와 체크박스 변수는 기본값을 사용하지 않습니다.
-- 템플릿에 정의된 변수 목록은 `GET /v1/templates/{id}` 응답의 `variables` 필드에서 확인할 수 있습니다 (동일 변수명은 하나로 통합되어 반환).
-
-**모바일 알림톡**
-
-- 템플릿 역할 또는 참여자 요청의 `mobile_alimtalk_enabled`가 true인 경우에만 서명 요청/완료 알림톡을 발송합니다.
-- 휴대폰 간편인증 역할은 `phone`이 필수입니다. 모바일 알림톡만 켜진 역할은 `phone`이 선택이지만, 비어 있으면 해당 참여자 알림톡은 발송되지 않습니다.
-- 알림톡 본문에 포함되는 발송/마감/완료 시각은 KST 기준입니다.
-
-**Request 예시**
-
-```json
-{
-  "title": "홍길동 근로계약서",
-  "participants": [
-    { "name": "홍길동", "email": "hong@example.com", "phone": "010-1234-5678", "role": "근로자", "mobile_alimtalk_enabled": true },
-    { "name": "스노우싸인(주)", "email": "hr@snowsign.io", "role": "회사", "security": { "method": "password", "value": "1234" } }
-  ],
-  "variables": {
-    "계약시작일": "2025-02-01",
-    "개인정보동의": true,
-    "급여": "3,500,000원"
-  }
-}
-```
-
-**Response (201)**
-
-```json
-{
-  "success": true,
-  "data": {
-    "contract_id": "uuid-string",
-    "title": "홍길동 근로계약서",
-    "status": "draft"
-  },
-  "message": "계약서가 생성되었습니다."
-}
-```
-
 ---
 
 ## 에러 처리
@@ -662,6 +898,9 @@ X-API-Key: YOUR_API_KEY
 | INVALID_API_KEY | 유효하지 않은 API Key |
 | VALIDATION_ERROR | 요청 파라미터 검증 실패 |
 | QUOTA_EXCEEDED | 월간 사용량 한도 초과 |
+| UPLOAD_NOT_FOUND | 업로드 세션을 찾을 수 없음 |
+| UPLOAD_EXPIRED | 업로드 세션이 만료됨 |
+| PDF_REJECTED | 지원하지 않는 PDF |
 | CONTRACT_NOT_FOUND | 계약서를 찾을 수 없음 |
 | TEMPLATE_NOT_FOUND | 템플릿을 찾을 수 없음 |
 | INVALID_CONTRACT_STATUS | 현재 상태에서 수행할 수 없는 작업 |
@@ -673,6 +912,9 @@ X-API-Key: YOUR_API_KEY
 | 항목 | 제한 |
 |------|------|
 | API 호출 | 100 requests / minute (API Key 당) |
+| 사용 중인 업로드 세션 | API Key당 3개 |
+| 사용 중인 업로드 세션 선언 용량 | API Key당 150MB |
+| 업로드 세션 유효 시간 | 10분 |
 
 제한 초과 시 `429` 상태 코드가 반환됩니다.
 
@@ -686,6 +928,12 @@ X-API-Key: YOUR_API_KEY
 # 계약서 목록 조회
 curl -X GET "https://api-snowsign.jtsnowball.com/public/v1/contracts" \
   -H "X-API-Key: YOUR_API_KEY"
+
+# PDF 업로드 세션 생성
+curl -X POST "https://api-snowsign.jtsnowball.com/public/v1/uploads" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"purpose":"contract_document","filename":"contract.pdf","content_type":"application/pdf","size_bytes":1234567}'
 
 # 계약서 발송
 curl -X POST "https://api-snowsign.jtsnowball.com/public/v1/contracts/{contract_id}/send" \
