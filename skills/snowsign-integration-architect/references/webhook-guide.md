@@ -15,7 +15,7 @@
   - [contract.cancelled](#contractcancelled)
   - [contract.expired](#contractexpired)
 - [서명 검증](#서명-검증)
-- [구현 가이드](#구현-가이드)
+- [수신 서버 가이드](#수신-서버-가이드)
 - [샘플 코드](#샘플-코드)
 - [문제 해결](#문제-해결)
 
@@ -289,14 +289,14 @@ function verifyWebhook(payloadBody, signature, secret) {
 
 ---
 
-## 구현 가이드
+## 수신 서버 가이드
 
 ### 핵심 원칙
 
 - HTTPS 엔드포인트 사용
 - **즉시 200 OK 응답** 후 비동기로 이벤트 처리 (5초 타임아웃 초과 방지)
 - 서명 검증 필수
-- 중복 이벤트 처리 (`contract_id` + `event` + `timestamp`로 중복 체크)
+- 같은 이벤트가 다시 들어와도 한 번만 반영되도록 중복 처리
 - 시크릿 키는 환경 변수로 관리, 코드에 하드코딩 금지
 
 ### 재시도
@@ -312,13 +312,16 @@ function verifyWebhook(payloadBody, signature, secret) {
 ```python
 import hmac
 import hashlib
+import logging
+import os
 from flask import Flask, request, jsonify
 from queue import Queue
 import threading
 
 app = Flask(__name__)
-WEBHOOK_SECRET = 'your_webhook_secret'
+WEBHOOK_SECRET = os.environ['SNOWSIGN_WEBHOOK_SECRET']
 event_queue = Queue()
+logger = logging.getLogger(__name__)
 
 def verify_signature(payload: bytes, signature: str) -> bool:
     expected = hmac.new(
@@ -332,17 +335,17 @@ def process_event(event_data):
     event_type = event_data.get('event')
     data = event_data.get('data', {})
     if event_type == 'contract.completed':
-        print(f'계약 완료: {data.get("contract_id")}')
+        logger.info('계약 완료: %s', data.get('contract_id'))
     elif event_type == 'participant.signed':
-        print(f'서명 완료: {data.get("participant", {}).get("name")}')
+        logger.info('서명 완료: %s', data.get('participant', {}).get('name'))
 
 def worker():
     while True:
         event_data = event_queue.get()
         try:
             process_event(event_data)
-        except Exception as e:
-            print(f'이벤트 처리 오류: {e}')
+        except Exception:
+            logger.exception('웹훅 이벤트 처리 오류')
         event_queue.task_done()
 
 threading.Thread(target=worker, daemon=True).start()
@@ -367,7 +370,7 @@ const express = require('express');
 const crypto = require('crypto');
 
 const app = express();
-const WEBHOOK_SECRET = 'your_webhook_secret';
+const WEBHOOK_SECRET = process.env.SNOWSIGN_WEBHOOK_SECRET;
 
 app.use('/webhook', express.raw({ type: 'application/json' }));
 
@@ -413,7 +416,7 @@ app.listen(3000, () => console.log('Webhook server running on port 3000'));
 |------|----------|
 | 웹훅 미수신 | URL이 HTTPS인지 확인, 방화벽 설정, 콘솔 로그에서 발송 상태 확인, 테스트 버튼으로 연결 확인 |
 | 서명 검증 실패 | 올바른 시크릿 사용 중인지 확인, raw body (파싱 전 원본) 사용 여부 확인, 필요시 시크릿 재생성 |
-| 중복 이벤트 수신 | 네트워크 이슈로 재전송될 수 있음, `contract_id` + `event` + `timestamp`로 중복 체크 구현 |
+| 중복 이벤트 수신 | 같은 계약 ID, 이벤트 타입, 이벤트 시각 조합이 이미 처리됐는지 확인 |
 
 ---
 
