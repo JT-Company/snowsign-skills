@@ -5,6 +5,7 @@
 - [개요](#개요)
 - [인증](#인증)
 - [API 목록](#api-목록)
+- [Hosted Embed](#hosted-embed)
 - [계약서 API](#계약서-api)
   - [계약서 목록 조회](#계약서-목록-조회)
   - [계약서 상세 조회](#계약서-상세-조회)
@@ -67,6 +68,12 @@ X-API-Key: YOUR_API_KEY
 
 ## API 목록
 
+### Hosted Embed
+
+| 메서드 | 엔드포인트 | 설명 |
+|--------|-----------|------|
+| POST | `/v1/embed-sessions` | 외부 서버가 iframe 생성 세션 발급 |
+
 ### 계약서
 
 | 메서드 | 엔드포인트 | 설명 |
@@ -97,16 +104,72 @@ X-API-Key: YOUR_API_KEY
 
 ---
 
+## Hosted Embed
+
+Hosted Embed는 외부 ERP/그룹웨어 화면 안의 iframe에서 스노우싸인 계약 생성 흐름을 제공하는 방식입니다. 외부 서버는 API Key로 단기 Embed Session을 만들고, 브라우저에는 `iframe_url`만 전달합니다. 스노우싸인 API Key는 브라우저, iframe URL, postMessage payload에 노출하지 않습니다.
+
+구현 순서와 샘플 코드는 [Hosted Embed 개발 가이드](./hosted-embed-guide.md)를 참고하세요.
+
+지원 흐름:
+- PDF 업로드 계약 생성/즉시 발송
+- 템플릿 단건 계약 생성/발송
+- 템플릿 대량 발송 spreadsheet UI
+
+기본 흐름:
+
+1. 외부 서버가 `POST /v1/embed-sessions`를 `X-API-Key`로 호출합니다.
+2. 스노우싸인이 `iframe_url`을 반환합니다.
+3. 외부 서비스가 브라우저에 `iframe_url`을 내려 iframe을 표시합니다.
+4. 스노우싸인 iframe 안에서 계약 생성 화면이 실행됩니다.
+5. 생성/발송 결과는 `snowsign.embed.*` postMessage 이벤트로 parent window에 전달됩니다.
+
+### Embed Session 생성
+
+```http
+POST /v1/embed-sessions
+X-API-Key: YOUR_API_KEY
+Content-Type: application/json
+```
+
+```json
+{
+  "purpose": "contract_create",
+  "allowed_origins": ["https://erp.example.com"],
+  "capabilities": ["template.bulk_send"],
+  "external_system": "customer-erp",
+  "external_id": "ERP-2026-00123",
+  "initial_payload": {
+    "template_id": "tpl_...",
+    "send_mode": "bulk"
+  }
+}
+```
+
+`external_system + external_id` 또는 `reference_id`는 같은 업무 요청의 iframe 세션이 중복 생성되지 않도록 하는 식별자로도 사용됩니다. 서로 다른 사용자가 같은 API key로 동시에 열 수 있도록 사용자/계약/주문 단위의 고유 값을 넣어주세요.
+
+**Response**
+
+```json
+{
+  "success": true,
+  "data": {
+    "iframe_url": "https://app.snowsign.jtsnowball.com/embed/contracts/new?..."
+  }
+}
+```
+
+---
+
 ## 계약서 API
 
-외부 ERP/그룹웨어에서 PDF 문서를 SnowSign 계약/템플릿 생성에 연결할 때는 업로드 세션을 사용합니다. API Key는 서버에만 보관하고, 브라우저 SDK에는 노출하지 마세요.
+외부 ERP/그룹웨어에서 PDF 문서를 스노우싸인 계약/템플릿 생성에 연결할 때는 업로드 세션을 사용합니다. API Key는 서버에만 보관하고, 브라우저 SDK에는 노출하지 마세요.
 
 기본 흐름:
 
 1. ERP 서버가 `POST /v1/uploads`로 `upload_id`와 업로드 정보를 발급받습니다.
 2. 브라우저 또는 ERP 서버가 발급받은 업로드 정보로 PDF를 업로드합니다.
 3. ERP 서버가 `document_upload_id`와 필드 위치 정보를 계약/템플릿 생성 API에 전달합니다.
-4. SnowSign이 업로드된 PDF를 최종 검증한 뒤 계약서 또는 템플릿을 생성합니다.
+4. 스노우싸인이 업로드된 PDF를 최종 검증한 뒤 계약서 또는 템플릿을 생성합니다.
 
 ### 계약서 목록 조회
 
@@ -653,7 +716,7 @@ X-API-Key: YOUR_API_KEY
 
 `POST /v1/templates`
 
-업로드 PDF와 역할/필드 위치 정보로 SnowSign 템플릿을 생성합니다.
+업로드 PDF와 역할/필드 위치 정보로 스노우싸인 템플릿을 생성합니다.
 
 **Request Body 주요 필드**
 

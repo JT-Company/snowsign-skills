@@ -95,18 +95,16 @@ X-API-Key: YOUR_API_KEY
 | GET | [/v1/templates/{id}](#템플릿-상세-조회) | 템플릿 상세 조회 |
 | GET | [/v1/templates/{id}/download](#템플릿-원본-파일-다운로드) | 템플릿 원본 파일 다운로드 |
 
----
-
 ## 계약서 API
 
-외부 ERP/그룹웨어에서 PDF 문서를 SnowSign 계약/템플릿 생성에 연결할 때는 업로드 세션을 사용합니다. API Key는 서버에만 보관하고, 브라우저 SDK에는 노출하지 마세요.
+외부 ERP/그룹웨어에서 PDF 문서를 스노우싸인 계약/템플릿 생성에 연결할 때는 업로드 세션을 사용합니다. API Key는 서버에만 보관하고, 브라우저 SDK에는 노출하지 마세요.
 
 기본 흐름:
 
 1. ERP 서버가 `POST /v1/uploads`로 `upload_id`와 업로드 정보를 발급받습니다.
 2. 브라우저 또는 ERP 서버가 발급받은 업로드 정보로 PDF를 업로드합니다.
 3. ERP 서버가 `document_upload_id`와 필드 위치 정보를 계약/템플릿 생성 API에 전달합니다.
-4. SnowSign이 업로드된 PDF를 최종 검증한 뒤 계약서 또는 템플릿을 생성합니다.
+4. 스노우싸인이 업로드된 PDF를 최종 검증한 뒤 계약서 또는 템플릿을 생성합니다.
 
 ### 계약서 목록 조회
 
@@ -653,7 +651,7 @@ X-API-Key: YOUR_API_KEY
 
 `POST /v1/templates`
 
-업로드 PDF와 역할/필드 위치 정보로 SnowSign 템플릿을 생성합니다.
+업로드 PDF와 역할/필드 위치 정보로 스노우싸인 템플릿을 생성합니다.
 
 **Request Body 주요 필드**
 

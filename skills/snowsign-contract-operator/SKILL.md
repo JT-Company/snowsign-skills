@@ -5,9 +5,9 @@ disable-model-invocation: false
 allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 ---
 
-# SnowSign Contract Operator
+# 스노우싸인 Contract Operator
 
-사용자의 자연어 요청을 SnowSign Public API 호출로 수행한다. 이 skill은 API 개발 가이드가 아니라, 에이전트가 사용자를 대신해 계약 업무를 처리하기 위한 실행 절차다.
+사용자의 자연어 요청을 스노우싸인 Public API 호출로 수행한다. 이 skill은 API 개발 가이드가 아니라, 에이전트가 사용자를 대신해 계약 업무를 처리하기 위한 실행 절차다.
 
 상세 엔드포인트, 요청 필드, 응답 예시는 필요할 때 [references/public-api-guide.md](references/public-api-guide.md)를 확인한다.
 
@@ -17,7 +17,7 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 - 인증 헤더: `X-API-Key`
 - API Key는 `SNOWSIGN_API_KEY` 환경변수에서 읽는 것을 기본으로 한다.
 - 실제 API Key를 답변, 로그, 예시 코드에 노출하지 않는다.
-- SnowSign MCP 도구가 사용 가능하면 MCP를 우선 사용한다.
+- 스노우싸인 MCP 도구가 사용 가능하면 MCP를 우선 사용한다.
 - MCP 도구가 없거나 실패했을 때만 `curl`을 fallback으로 사용한다.
 - `curl` fallback 실행 전 `SNOWSIGN_API_KEY`가 없으면 사용자에게 키 설정을 요청하고 API 호출을 멈춘다.
 
@@ -28,7 +28,7 @@ test -n "$SNOWSIGN_API_KEY"
 
 ## 실행 도구 우선순위
 
-1. SnowSign MCP 도구가 있으면 MCP를 우선 사용한다.
+1. 스노우싸인 MCP 도구가 있으면 MCP를 우선 사용한다.
 2. MCP 도구가 없거나 MCP 호출이 실패하면 `SNOWSIGN_API_KEY` 환경변수와 `curl`로 직접 호출한다.
 3. 실제 API Key, `X-API-Key` 헤더 값, 다운로드 인증 정보를 답변이나 로그에 노출하지 않는다.
 
@@ -106,7 +106,7 @@ test -n "$SNOWSIGN_API_KEY"
 1. 의도를 분류한다.
 2. 필요한 식별자와 필수 입력값이 있는지 확인한다.
 3. 스키마가 헷갈리면 `references/public-api-guide.md`에서 해당 API 섹션을 읽는다.
-4. SnowSign MCP 도구가 있으면 MCP로 API를 호출한다.
+4. 스노우싸인 MCP 도구가 있으면 MCP로 API를 호출한다.
 5. MCP 도구가 없거나 실패하면 `curl` fallback으로 API를 호출한다.
 6. 응답의 `success`를 확인한다.
 7. 성공이면 사용자가 필요한 결과만 요약한다.
@@ -129,7 +129,7 @@ MCP 도구의 응답도 원본 전체를 그대로 보여주지 말고, 사용�
 
 ## curl fallback
 
-아래 예시는 SnowSign MCP 도구를 사용할 수 없을 때만 사용한다.
+아래 예시는 스노우싸인 MCP 도구를 사용할 수 없을 때만 사용한다.
 
 ## 조회 작업
 

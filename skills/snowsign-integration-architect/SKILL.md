@@ -5,9 +5,9 @@ disable-model-invocation: false
 allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 ---
 
-# SnowSign API & Webhook Integration Architect
+# 스노우싸인 API & Webhook Integration Architect
 
-SnowSign Public API와 웹훅을 기존 ERP, 자체 서비스, 백오피스, 배치/자동화 스크립트에 연동할 때 사용한다. 이 스킬의 핵심은 구현이 아니라 설계와 승인 게이트다.
+스노우싸인 Public API, Hosted Embed, 웹훅을 기존 ERP, 자체 서비스, 백오피스, 배치/자동화 스크립트에 연동할 때 사용한다. 이 스킬의 핵심은 구현이 아니라 설계와 승인 게이트다.
 
 ## 절대 규칙
 
@@ -28,6 +28,7 @@ SnowSign Public API와 웹훅을 기존 ERP, 자체 서비스, 백오피스, 배
 정확한 스펙은 항상 다음 문서를 확인한다.
 
 - API: [references/public-api-guide.md](references/public-api-guide.md)
+- Hosted Embed: [references/hosted-embed-guide.md](references/hosted-embed-guide.md)
 - Webhook: [references/webhook-guide.md](references/webhook-guide.md)
 
 ## 역할
@@ -45,10 +46,11 @@ SnowSign Public API와 웹훅을 기존 ERP, 자체 서비스, 백오피스, 배
 
 다음 작업에 이 스킬을 사용한다.
 
-- ERP/CRM/그룹웨어/자체 백오피스에 SnowSign 계약 생성, 발송, 상태 조회, 다운로드 기능 연동
+- ERP/CRM/그룹웨어/자체 백오피스에 스노우싸인 계약 생성, 발송, 상태 조회, 다운로드 기능 연동
+- 외부 화면 안에서 스노우싸인 계약 생성 UI를 iframe으로 제공하는 Hosted Embed 연동
 - 템플릿 기반 또는 PDF 업로드 기반 계약/템플릿 생성 플로우 설계
 - 계약 완료, 취소, 만료, 참여자 서명 이벤트를 웹훅으로 받아 후속 업무 자동화
-- 내부 DB 상태와 SnowSign 계약 상태 동기화
+- 내부 DB 상태와 스노우싸인 계약 상태 동기화
 - 워크플로우 자동화 스크립트, 배치, 큐/잡 처리 설계
 - API Key, Webhook Secret, 로그, 재처리, 중복 이벤트, 장애 대응 정책 설계
 
@@ -56,6 +58,7 @@ SnowSign Public API와 웹훅을 기존 ERP, 자체 서비스, 백오피스, 배
 
 - API Base URL: `https://api-snowsign.jtsnowball.com/public/v1`
 - API 인증: `X-API-Key`
+- Hosted Embed: 외부 서버가 `POST /embed-sessions`로 `iframe_url`을 발급하고, 브라우저에는 API Key 대신 `iframe_url`만 전달한다.
 - Webhook 서명: `X-Webhook-Signature`, HMAC-SHA256(raw body, secret)
 - Webhook은 5초 안에 2xx를 응답하고 실제 처리는 비동기화한다.
 - API Key와 Webhook Secret은 코드, 로그, 답변 예시에 노출하지 않는다.
@@ -108,8 +111,8 @@ SnowSign Public API와 웹훅을 기존 ERP, 자체 서비스, 백오피스, 배
 구현 전 다음과 같은 그림을 만든다.
 
 - 주요 사용자 여정: 생성, 발송, 서명 진행, 완료, 실패/취소, 재처리
-- 상태 전이: 내부 상태와 SnowSign 상태 매핑
-- 데이터 매핑: 내부 필드 -> SnowSign API 필드 -> 웹훅 payload -> 내부 업데이트
+- 상태 전이: 내부 상태와 스노우싸인 상태 매핑
+- 데이터 매핑: 내부 필드 -> 스노우싸인 API 필드 -> 웹훅 payload -> 내부 업데이트
 - 권한/승인: 누가 생성/발송/취소/다운로드할 수 있는가
 - 운영 정책: 감사 로그, 재처리 화면, 알림, 모니터링
 
@@ -148,7 +151,10 @@ SnowSign Public API와 웹훅을 기존 ERP, 자체 서비스, 백오피스, 배
 ## API 설계 체크리스트
 
 - API Key는 서버 환경변수에만 둔다.
-- 클라이언트 브라우저에서 SnowSign API를 직접 호출하지 않는다.
+- 클라이언트 브라우저에서 스노우싸인 Public API를 직접 호출하지 않는다.
+- 계약 생성 전체 UI를 외부 서비스 안에 넣어야 하면 브라우저 직접 API 호출 대신 Hosted Embed를 우선 검토한다.
+- Hosted Embed는 `allowed_origins`, `capabilities`, `external_system`, `external_id` 또는 `reference_id` 설계를 반드시 포함한다.
+- 같은 업무를 하나만 열게 할지, 새로고침/재시도마다 새 iframe을 허용할지에 따라 `external_id`/`reference_id` 정책을 정한다.
 - 템플릿 계약은 `GET /templates/{template_id}`로 역할명과 변수를 먼저 확인한다.
 - PDF 기반 생성은 `POST /uploads`로 업로드 세션을 만들고 업로드 완료 후 `document_upload_id`를 계약/템플릿 생성 API에 전달한다.
 - PDF 좌표는 PDF.js `getViewport({ scale: 1 })` 기준 pixel 좌표로 설계한다.
@@ -175,6 +181,7 @@ SnowSign Public API와 웹훅을 기존 ERP, 자체 서비스, 백오피스, 배
 
 - 정확한 엔드포인트, 필수 필드, 응답 구조가 필요할 때
 - PDF 업로드 세션, PDF 계약/템플릿 생성, 업로드 진단 흐름을 확인할 때
+- Hosted Embed 세션 발급, iframe 표시, postMessage 이벤트, 요청 ID 재사용 정책이 필요할 때
 - 템플릿 `signers`, `variables`, `signature_fields` 구조를 확인할 때
 - 웹훅 이벤트 타입, payload, 헤더, 서명 검증 방식이 필요할 때
 - 에러 코드, 상태값, rate limit, 샘플 구현이 필요할 때
