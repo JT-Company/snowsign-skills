@@ -5,6 +5,7 @@
 - [개요](#개요)
 - [인증](#인증)
 - [API 목록](#api-목록)
+- [Hosted Embed](#hosted-embed)
 - [계약서 API](#계약서-api)
   - [계약서 목록 조회](#계약서-목록-조회)
   - [계약서 상세 조회](#계약서-상세-조회)
@@ -67,6 +68,12 @@ X-API-Key: YOUR_API_KEY
 
 ## API 목록
 
+### Hosted Embed
+
+| 메서드 | 엔드포인트 | 설명 |
+|--------|-----------|------|
+| POST | `/v1/embed-sessions` | 외부 서버가 iframe 생성 세션 발급 |
+
 ### 계약서
 
 | 메서드 | 엔드포인트 | 설명 |
@@ -94,6 +101,64 @@ X-API-Key: YOUR_API_KEY
 | GET | [/v1/templates](#템플릿-목록-조회) | 템플릿 목록 조회 |
 | GET | [/v1/templates/{id}](#템플릿-상세-조회) | 템플릿 상세 조회 |
 | GET | [/v1/templates/{id}/download](#템플릿-원본-파일-다운로드) | 템플릿 원본 파일 다운로드 |
+
+---
+
+## Hosted Embed
+
+Hosted Embed는 외부 ERP/그룹웨어 화면 안의 iframe에서 스노우싸인 계약 생성 흐름을 제공하는 방식입니다. 외부 서버는 API Key로 단기 Embed Session을 만들고, 브라우저에는 `iframe_url`만 전달합니다. 스노우싸인 API Key는 브라우저, iframe URL, postMessage payload에 노출하지 않습니다.
+
+구현 순서와 샘플 코드는 [Hosted Embed 개발 가이드](./hosted-embed-guide.md)를 참고하세요.
+
+지원 흐름:
+- PDF 업로드 계약 생성/즉시 발송
+- 템플릿 단건 계약 생성/발송
+- 템플릿 대량 발송 spreadsheet UI
+
+기본 흐름:
+
+1. 외부 서버가 `POST /v1/embed-sessions`를 `X-API-Key`로 호출합니다.
+2. 스노우싸인이 `iframe_url`을 반환합니다.
+3. 외부 서비스가 브라우저에 `iframe_url`을 내려 iframe을 표시합니다.
+4. 스노우싸인 iframe 안에서 계약 생성 화면이 실행됩니다.
+5. 생성/발송 결과는 `snowsign.embed.*` postMessage 이벤트로 parent window에 전달됩니다.
+
+### Embed Session 생성
+
+```http
+POST /v1/embed-sessions
+X-API-Key: YOUR_API_KEY
+Content-Type: application/json
+```
+
+```json
+{
+  "purpose": "contract_create",
+  "allowed_origins": ["https://erp.example.com"],
+  "capabilities": ["template.bulk_send"],
+  "external_system": "customer-erp",
+  "external_id": "ERP-2026-00123",
+  "initial_payload": {
+    "template_id": "tpl_...",
+    "send_mode": "bulk"
+  }
+}
+```
+
+`external_system + external_id` 또는 `reference_id`는 같은 업무 요청의 iframe 세션이 중복 생성되지 않도록 하는 식별자로도 사용됩니다. 서로 다른 사용자가 같은 API key로 동시에 열 수 있도록 사용자/계약/주문 단위의 고유 값을 넣어주세요.
+
+**Response**
+
+```json
+{
+  "success": true,
+  "data": {
+    "iframe_url": "https://app.snowsign.jtsnowball.com/embed/contracts/new?..."
+  }
+}
+```
+
+---
 
 ## 계약서 API
 
@@ -374,6 +439,26 @@ X-API-Key: YOUR_API_KEY
 
 `signature_fields` 좌표는 PDF.js `getViewport({ scale: 1 })` 기준 pixel 좌표입니다. 원점은 페이지 좌상단이며, `page_number`는 1부터 시작합니다.
 
+**signature_fields 항목 주요 필드**
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| participant 또는 participant_key | string | 조건부 | 참여자 역할명 또는 참여자 key. `type: "variable"`에는 사용하지 않습니다. |
+| type | string | Y | `signature`, `stamp`, `name`, `text`, `date`, `checkbox`, `variable` |
+| page_number | integer | Y | PDF 페이지 번호. 1부터 시작 |
+| position_x / position_y | number | Y | PDF.js pixel 좌표 |
+| width / height | number | Y | 입력칸 크기 |
+| position_unit | string | N | `pixel`만 지원 |
+| is_required | boolean | N | 필수 입력 여부. 생략 시 true. `signature`/`stamp`/`name`은 항상 true, `variable`은 false, `text`/`date`/`checkbox`만 false 지정 가능 |
+| font_size | integer | N | 텍스트/날짜/변수 텍스트 PDF 표시 폰트 크기. 1~72 |
+| text_align | string | N | 텍스트 정렬. `left`, `center`, `right` 중 하나. `name`, `text`, `date`, 텍스트/날짜 `variable`에 적용되며 서명/체크박스에는 저장되지 않습니다. |
+| placeholder_text | string | N | 텍스트 입력 안내 문구. 날짜 입력칸에는 저장하지 않습니다. |
+| variable_name | string | 조건부 | `type: "variable"`일 때 필수 |
+| variable_value_type | string | N | 변수 값 타입. `text`, `checkbox`, `date` 중 하나. 기본값 `text` |
+| date_precision | string | N | 날짜 입력/날짜 변수 정밀도. `day` 또는 `month` |
+| date_format_pattern | string | N | 날짜 표시 형식. 예: `YYYY년 MM월 DD일`, `YYYY-MM-DD`, `YYYY/MM` |
+| fill_background | boolean | N | 날짜/변수 표시 시 PDF 배경을 흰색으로 가릴지 여부 |
+
 **Request 예시**
 
 ```json
@@ -414,7 +499,8 @@ X-API-Key: YOUR_API_KEY
       "position_y": 240,
       "width": 120,
       "height": 18,
-      "fill_background": true
+      "fill_background": true,
+      "text_align": "right"
     }
   ],
   "variables": {
@@ -667,6 +753,8 @@ X-API-Key: YOUR_API_KEY
 
 대부분의 경우 템플릿 역할은 문자열 배열로 만들 수 있습니다. 같은 역할명이 2개 이상이면 구분이 모호하므로 `{ "key": "...", "role_name": "..." }` 형식을 사용하세요.
 
+`signature_fields` 항목은 PDF 계약서 생성 API와 동일하게 `is_required`, `text_align`, `font_size`, 날짜 메타데이터, 변수 메타데이터를 사용할 수 있습니다. `is_required`는 `text`/`date`/`checkbox`에서만 false 지정 가능하며, `text_align`은 `left`, `center`, `right` 중 하나이고 `name`, `text`, `date`, 텍스트/날짜 `variable`에 적용됩니다.
+
 **Request 예시**
 
 ```json
@@ -687,6 +775,18 @@ X-API-Key: YOUR_API_KEY
       "height": 50,
       "position_unit": "pixel",
       "is_required": true
+    },
+    {
+      "role": "근로자",
+      "type": "date",
+      "page_number": 1,
+      "position_x": 180,
+      "position_y": 240,
+      "width": 120,
+      "height": 24,
+      "date_precision": "day",
+      "date_format_pattern": "YYYY-MM-DD",
+      "text_align": "center"
     }
   ],
   "integration": {
@@ -787,7 +887,8 @@ X-API-Key: YOUR_API_KEY
         "display_order": 1,
         "date_precision": null,
         "date_format_pattern": null,
-        "fill_background": null
+        "fill_background": null,
+        "text_align": null
       }
     ],
     "variables": [
@@ -799,7 +900,8 @@ X-API-Key: YOUR_API_KEY
         "is_required": false,
         "date_precision": "day",
         "date_format_pattern": "YYYY년 MM월 DD일",
-        "fill_background": true
+        "fill_background": true,
+        "text_align": "center"
       },
       {
         "name": "개인정보동의",
@@ -809,7 +911,8 @@ X-API-Key: YOUR_API_KEY
         "is_required": false,
         "date_precision": null,
         "date_format_pattern": null,
-        "fill_background": false
+        "fill_background": false,
+        "text_align": null
       },
       {
         "name": "급여",
@@ -819,7 +922,8 @@ X-API-Key: YOUR_API_KEY
         "is_required": false,
         "date_precision": null,
         "date_format_pattern": null,
-        "fill_background": false
+        "fill_background": false,
+        "text_align": "right"
       }
     ]
   }
@@ -829,7 +933,10 @@ X-API-Key: YOUR_API_KEY
 `signers[].security_method`는 템플릿 역할에 저장된 서명 보안 정책입니다. 값은 `email`, `password`, `easy_cert` 중 하나이며, 값이 없으면 `email`과 동일하게 처리됩니다.
 `signers[].mobile_alimtalk_enabled`는 템플릿 역할 기반 계약 생성 시 해당 참여자에게 모바일 알림톡을 보낼지 여부입니다.
 `signature_fields`에는 `type: "variable"` 필드가 제외됩니다. 변수 목록은 `variables`에 동일 변수명 중복 제거 후 반환됩니다.
-`variables[].value_type`은 `text`, `checkbox`, `date` 중 하나입니다. 날짜 변수는 `date_precision`, `date_format_pattern`, `fill_background` 메타를 함께 사용합니다.
+`signature_fields[].is_required`는 `signature`/`stamp`/`name`이면 항상 true이고, `text`/`date`/`checkbox`이면 저장된 필수 여부입니다.
+`variables[].is_required`는 변수 값이 서명자 입력 대상이 아니므로 항상 false입니다.
+`signature_fields[].text_align`과 `variables[].text_align`은 `left`, `center`, `right`, `null` 중 하나입니다. 서명/체크박스처럼 텍스트 정렬 대상이 아닌 항목은 `null`입니다.
+`variables[].value_type`은 `text`, `checkbox`, `date` 중 하나입니다. 날짜 변수는 `date_precision`, `date_format_pattern`, `fill_background`, `text_align` 메타를 함께 사용합니다.
 
 ---
 
@@ -1030,5 +1137,5 @@ await fetch(`${BASE_URL}/contracts/${contractId}/send`, {
 
 ---
 
-*최종 수정: 2026-05-30*
-*문서 버전: 1.3*
+*최종 수정: 2026-06-17*
+*문서 버전: 1.4*
