@@ -8,8 +8,7 @@
 - [1. 서버에서 Embed Session 생성](#1-서버에서-embed-session-생성)
 - [2. 브라우저에서 iframe 표시](#2-브라우저에서-iframe-표시)
 - [3. 결과 이벤트 수신](#3-결과-이벤트-수신)
-- [capabilities 선택](#capabilities-선택)
-- [초기값 전달](#초기값-전달)
+- [flows 선택](#flows-선택)
 - [보안 체크리스트](#보안-체크리스트)
 - [오류 처리](#오류-처리)
 - [샘플 구현](#샘플-구현)
@@ -21,7 +20,7 @@
 
 Hosted Embed는 외부 ERP, 그룹웨어, 백오피스 화면 안에서 스노우싸인의 계약 생성 화면을 iframe으로 제공하는 방식입니다.
 
-외부 서비스는 스노우싸인 API Key를 서버에만 보관하고, 브라우저에는 스노우싸인이 발급한 `iframe_url`만 전달합니다. iframe 안에서는 스노우싸인이 PDF 업로드, 필드 배치, 참여자 입력, 템플릿 선택, 대량 발송 UI를 처리합니다.
+외부 서비스는 스노우싸인 API Key를 서버에만 보관하고, 브라우저에는 스노우싸인이 발급한 `iframe_url`만 전달합니다. iframe 안에서는 스노우싸인이 PDF 업로드, AI 문서 작성, PDF 렌더링, 필드 배치, 참여자 입력, 템플릿 선택, 대량 발송 UI를 처리합니다.
 
 외부 서비스가 직접 구현할 부분은 세 가지입니다.
 
@@ -32,6 +31,7 @@ Hosted Embed는 외부 ERP, 그룹웨어, 백오피스 화면 안에서 스노�
 외부 서비스가 직접 구현하지 않는 것:
 
 - PDF 업로드 처리
+- AI HTML 문서 작성/렌더링 처리
 - 계약 생성/발송 처리
 - 템플릿 조회 처리
 - 스노우싸인 iframe 초기화와 인증 처리
@@ -53,7 +53,8 @@ Hosted Embed는 외부 ERP, 그룹웨어, 백오피스 화면 안에서 스노�
   -> postMessage로 ready/completed/error 이벤트 수신
 
 스노우싸인 iframe
-  -> 업로드, 계약 생성/발송, 결과 전달을 처리
+  -> PDF 업로드 또는 AI 문서 작성/렌더링
+  -> 계약 생성/발송, 결과 전달을 처리
 ```
 
 ---
@@ -100,14 +101,10 @@ Content-Type: application/json
 {
   "purpose": "contract_create",
   "allowed_origins": ["https://erp.example.com"],
-  "capabilities": ["template.bulk_send"],
+  "flows": ["template_bulk"],
   "external_system": "customer-erp",
   "external_id": "ERP-2026-00123",
-  "reference_id": "order-1004",
-  "initial_payload": {
-    "template_id": "template-uuid",
-    "send_mode": "bulk"
-  }
+  "reference_id": "order-1004"
 }
 ```
 
@@ -116,17 +113,14 @@ Content-Type: application/json
 | 필드 | 필수 | 설명 |
 |------|------|------|
 | `allowed_origins` | Y | iframe을 표시할 parent origin 목록 |
-| `capabilities` | Y | iframe에서 허용할 계약 생성 기능 |
+| `flows` | Y | iframe에서 허용할 계약 생성 흐름 |
 | `external_system` | N | 외부 시스템명 |
 | `external_id` | N | 외부 업무/문서 ID |
 | `reference_id` | N | 외부 서비스에서 재조회할 참조 ID. 중복 세션 방지에도 사용 |
-| `initial_payload` | N | iframe 초기값 |
 
 `external_system`과 `external_id`를 함께 보내면 같은 외부 요청의 iframe 세션이 중복 생성되지 않습니다. 두 값을 쓰지 않는 경우에는 `reference_id`가 같은 역할을 합니다.
 
 같은 업무 화면을 하나만 열게 하려면 업무 ID를 그대로 사용하세요. 새로고침이나 재시도마다 새 iframe을 열 수 있어야 한다면 `external_id`는 매번 새로 만들고, 원래 주문/문서 ID는 `reference_id`에 넣는 방식을 권장합니다.
-
-`initial_payload`에는 iframe 초기 진입값만 넣고, 큰 파일 내용이나 spreadsheet 원본 전체는 넣지 마세요. 세션 데이터에는 JSON 크기 제한이 있습니다. 현재 Hosted Embed가 사용하는 값은 `mode`, `template_id`, `send_mode`입니다.
 
 ### 응답 예시
 
@@ -134,7 +128,9 @@ Content-Type: application/json
 {
   "success": true,
   "data": {
-    "iframe_url": "https://app.snowsign.jtsnowball.com/embed/contracts/new?..."
+    "session_id": "embed-session-uuid",
+    "iframe_url": "https://app.snowsign.jtsnowball.com/embed/contracts/new?...",
+    "code_expires_at": "2026-06-27T12:00:00Z"
   }
 }
 ```
@@ -234,56 +230,20 @@ window.addEventListener('message', (event) => {
 
 ---
 
-## capabilities 선택
+## flows 선택
 
-`capabilities`는 iframe에서 사용자가 할 수 있는 일을 제한합니다.
+`flows`는 iframe에서 사용자가 할 수 있는 일을 제한합니다.
 
-| 원하는 흐름 | capabilities |
-|------------|--------------|
-| PDF 업로드 후 초안 생성 | `["pdf.create"]` |
-| PDF 업로드 후 즉시 발송 | `["pdf.create", "pdf.send"]` |
-| 템플릿으로 초안 생성 | `["template.create"]` |
-| 템플릿으로 즉시 발송 | `["template.create", "template.send"]` |
-| 템플릿 대량 발송 | `["template.bulk_send"]` |
-| 사용자가 PDF/템플릿 중 선택 | 필요한 capability 조합을 함께 전달 |
+- PDF 초안: `pdf_draft`
+- PDF 즉시 발송: `pdf_send`
+- 템플릿 초안: `template_draft`
+- 템플릿 즉시 발송: `template_send`
+- 템플릿 대량 발송: `template_bulk`
+- AI 문서 초안: `ai_draft`
+- AI 문서 즉시 발송: `ai_send`
+- 전체: `all`
 
-즉시 발송 기능은 생성 권한과 발송 권한이 모두 필요합니다. 예를 들어 PDF 즉시 발송은 `pdf.send`만으로는 동작하지 않고 `pdf.create`가 함께 필요합니다.
-
----
-
-## 초기값 전달
-
-`initial_payload`는 iframe이 처음 열릴 화면을 정하는 용도로 사용합니다. 모든 값은 선택입니다.
-
-지원 필드:
-
-- `mode`: `pdf`, `template`, `bulk` 중 하나. 허용된 capability가 있을 때 해당 흐름으로 바로 진입합니다.
-- `template_id`: 템플릿 UUID. 템플릿 흐름에서 해당 템플릿을 미리 선택합니다.
-- `send_mode`: `single` 또는 `bulk`. 템플릿 흐름의 발송 방식을 미리 선택합니다.
-
-### 템플릿 단건 흐름 예시
-
-```json
-{
-  "capabilities": ["template.create", "template.send"],
-  "initial_payload": {
-    "template_id": "template-uuid",
-    "send_mode": "single"
-  }
-}
-```
-
-### 템플릿 대량 발송 흐름 예시
-
-```json
-{
-  "capabilities": ["template.bulk_send"],
-  "initial_payload": {
-    "template_id": "template-uuid",
-    "send_mode": "bulk"
-  }
-}
-```
+전체 흐름을 허용하려면 `flows: ["all"]`만 전달합니다.
 
 ---
 
@@ -309,7 +269,7 @@ iframe 오류는 `snowsign.embed.error` 이벤트로 전달됩니다.
 | 상황 | 외부 서비스 처리 |
 |------|----------------|
 | 세션 만료 | 새 Embed Session을 발급해 iframe 재로딩 |
-| 권한 오류 | 서버에서 capabilities와 API Key 상태 확인 |
+| 권한 오류 | 서버에서 flows와 API Key 상태 확인 |
 | origin 오류 | `allowed_origins`가 실제 parent origin과 일치하는지 확인 |
 | 구독/쿼터 오류 | 스노우싸인 관리자에게 플랜/사용량 확인 안내 |
 | 사용자가 취소 | 외부 화면을 닫거나 이전 단계로 이동 |
@@ -332,7 +292,7 @@ const SNOWSIGN_PUBLIC_API = 'https://api-snowsign.jtsnowball.com/public/v1';
 const SNOWSIGN_API_KEY = process.env.SNOWSIGN_API_KEY;
 
 app.post('/api/snowsign/embed-session', async (req, res) => {
-  const { externalId, templateId } = req.body;
+  const { externalId } = req.body;
 
   const response = await fetch(`${SNOWSIGN_PUBLIC_API}/embed-sessions`, {
     method: 'POST',
@@ -343,12 +303,9 @@ app.post('/api/snowsign/embed-session', async (req, res) => {
     body: JSON.stringify({
       purpose: 'contract_create',
       allowed_origins: ['https://erp.example.com'],
-      capabilities: ['template.create', 'template.send'],
+      flows: ['template_send'],
       external_system: 'customer-erp',
       external_id: externalId,
-      initial_payload: {
-        template_id: templateId,
-      },
     }),
   });
 
@@ -368,11 +325,11 @@ app.post('/api/snowsign/embed-session', async (req, res) => {
 ### 브라우저
 
 ```js
-async function openHostedEmbed({ externalId, templateId }) {
+async function openHostedEmbed({ externalId }) {
   const response = await fetch('/api/snowsign/embed-session', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ externalId, templateId }),
+    body: JSON.stringify({ externalId }),
   });
 
   const data = await response.json();
@@ -428,14 +385,24 @@ async function openHostedEmbed({ externalId, templateId }) {
 
 - iframe이 실제로 `snowsign.embed.ready`를 보냈는지 브라우저 개발자 도구에서 확인하세요.
 - `event.origin` 검증 값이 `https://app.snowsign.jtsnowball.com`인지 확인하세요.
+
+### AI 모드가 보이지 않습니다
+
+- Embed Session의 `flows`에 `ai_draft` 또는 `ai_send`가 있어야 합니다.
+
+### AI PDF 생성 후 계약 생성이 실패합니다
+
+- 초안 생성에는 `ai_draft` 또는 `ai_send`가 필요합니다.
+- 즉시 발송에는 `ai_send`가 필요합니다.
+- AI PDF 렌더링은 비동기 작업이므로 iframe이 완료 상태를 받을 때까지 기다려야 합니다.
 - message handler 등록이 iframe 생성보다 늦어도 완료 이벤트는 받을 수 있지만, ready 이벤트는 놓칠 수 있습니다.
 
 ### 즉시 발송 버튼이 보이지 않습니다
 
-capabilities에 생성 권한과 발송 권한이 모두 필요합니다.
+flows에 즉시 발송용 flow가 필요합니다.
 
-- PDF 즉시 발송: `["pdf.create", "pdf.send"]`
-- 템플릿 즉시 발송: `["template.create", "template.send"]`
+- PDF 즉시 발송: `["pdf_send"]`
+- 템플릿 즉시 발송: `["template_send"]`
 
 ### 대량 발송 중 일부 행이 실패했습니다
 

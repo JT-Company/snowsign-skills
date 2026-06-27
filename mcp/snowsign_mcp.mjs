@@ -7,7 +7,7 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 
 const SERVER_NAME = "snowsign";
-const SERVER_VERSION = "0.4.1";
+const SERVER_VERSION = "0.4.2";
 const DEFAULT_BASE_URL = "https://api-snowsign.jtsnowball.com/public/v1";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -388,14 +388,13 @@ const TOOLS = [
     description: "외부 서비스 화면에서 스노우싸인 계약 생성 iframe을 열 수 있도록 Hosted Embed Session을 발급합니다. 응답의 iframe_url만 브라우저에 전달하세요.",
     inputSchema: objectSchema({
       allowed_origins: { type: "array", items: { type: "string" }, description: "iframe을 표시할 parent origin 목록입니다. 예: https://erp.example.com" },
-      capabilities: { type: "array", items: { type: "string" }, description: "허용 기능 목록입니다. 예: pdf.create, pdf.send, template.create, template.send, template.bulk_send" },
+      flows: { type: "array", items: { type: "string" }, description: "허용 흐름 목록입니다. 예: pdf_draft, pdf_send, template_draft, template_send, template_bulk, ai_draft, ai_send, all" },
       external_system: { type: "string", description: "외부 시스템명입니다." },
       external_id: { type: "string", description: "외부 요청 ID입니다. 같은 값의 진행 중 세션은 중복 생성되지 않습니다." },
       reference_id: { type: "string", description: "외부 업무/문서 참조 ID입니다." },
-      initial_payload: { type: "object", description: "iframe 초기값입니다. mode, template_id, send_mode 등을 전달할 수 있습니다." },
       metadata: { type: "object", description: "외부 서비스가 보관할 연동 메타데이터입니다." },
       ui: { type: "object", description: "Hosted Embed UI 옵션입니다." },
-    }, ["allowed_origins", "capabilities"]),
+    }, ["allowed_origins", "flows"]),
   },
   {
     name: "snowsign_list_api_reference_sections",
@@ -503,12 +502,11 @@ async function callTool(name, args) {
     const body = {
       purpose: "contract_create",
       allowed_origins: args.allowed_origins,
-      capabilities: args.capabilities,
+      flows: args.flows,
     };
     if (args.external_system) body.external_system = args.external_system;
     if (args.external_id) body.external_id = args.external_id;
     if (args.reference_id) body.reference_id = args.reference_id;
-    if (args.initial_payload) body.initial_payload = args.initial_payload;
     if (args.metadata) body.metadata = args.metadata;
     if (args.ui) body.ui = args.ui;
 
@@ -574,7 +572,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "snowsign_get_hosted_embed_guide_section 도구로 필요한 Hosted Embed 섹션을 확인하세요. 외부 서버는 snowsign_create_embed_session 또는 POST /v1/embed-sessions로 iframe_url을 발급하고, 브라우저에는 API Key 없이 iframe_url만 전달합니다. iframe 내부 exchange API는 직접 호출하지 않습니다.",
+            text: "snowsign_get_hosted_embed_guide_section 도구로 필요한 Hosted Embed 섹션을 확인하세요. 외부 서버는 snowsign_create_embed_session 또는 POST /v1/embed-sessions로 flows와 allowed_origins를 전달해 iframe_url을 발급하고, 브라우저에는 API Key 없이 iframe_url만 전달합니다. iframe 내부 exchange API는 직접 호출하지 않습니다.",
           },
         }],
       };

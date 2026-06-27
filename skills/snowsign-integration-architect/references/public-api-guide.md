@@ -72,7 +72,7 @@ X-API-Key: YOUR_API_KEY
 
 | 메서드 | 엔드포인트 | 설명 |
 |--------|-----------|------|
-| POST | `/v1/embed-sessions` | 외부 서버가 iframe 생성 세션 발급 |
+| POST | `/v1/embed-sessions` | 외부 서버가 PDF/템플릿/AI 계약 생성 iframe 세션 발급 |
 
 ### 계약서
 
@@ -114,6 +114,7 @@ Hosted Embed는 외부 ERP/그룹웨어 화면 안의 iframe에서 스노우싸�
 - PDF 업로드 계약 생성/즉시 발송
 - 템플릿 단건 계약 생성/발송
 - 템플릿 대량 발송 spreadsheet UI
+- AI 문서 작성 후 PDF 계약 생성/즉시 발송
 
 기본 흐름:
 
@@ -135,17 +136,26 @@ Content-Type: application/json
 {
   "purpose": "contract_create",
   "allowed_origins": ["https://erp.example.com"],
-  "capabilities": ["template.bulk_send"],
+  "flows": ["template_bulk"],
   "external_system": "customer-erp",
-  "external_id": "ERP-2026-00123",
-  "initial_payload": {
-    "template_id": "tpl_...",
-    "send_mode": "bulk"
-  }
+  "external_id": "ERP-2026-00123"
 }
 ```
 
 `external_system + external_id` 또는 `reference_id`는 같은 업무 요청의 iframe 세션이 중복 생성되지 않도록 하는 식별자로도 사용됩니다. 서로 다른 사용자가 같은 API key로 동시에 열 수 있도록 사용자/계약/주문 단위의 고유 값을 넣어주세요.
+
+flows:
+
+- PDF 초안 작성: `pdf_draft`
+- PDF 작성 및 발송: `pdf_send`
+- 템플릿 초안 작성: `template_draft`
+- 템플릿 작성 및 발송: `template_send`
+- 템플릿 대량 발송: `template_bulk`
+- AI 문서 초안 작성: `ai_draft`
+- AI 문서 작성 및 발송: `ai_send`
+- 전체: `all`
+
+전체 흐름을 허용하려면 `flows: ["all"]`만 전달합니다.
 
 **Response**
 
@@ -153,7 +163,9 @@ Content-Type: application/json
 {
   "success": true,
   "data": {
-    "iframe_url": "https://app.snowsign.jtsnowball.com/embed/contracts/new?..."
+    "session_id": "embed-session-uuid",
+    "iframe_url": "https://app.snowsign.jtsnowball.com/embed/contracts/new?...",
+    "code_expires_at": "2026-06-27T12:00:00Z"
   }
 }
 ```
@@ -243,16 +255,6 @@ Content-Type: application/json
 }
 ```
 
-> **변수 (variables)**: 계약서 생성 시 템플릿 변수에 입력된 값입니다. 변수가 없는 계약서에서는 `null`이 반환됩니다. 변수 값은 PDF 위에 고정 텍스트로 렌더링되며, 서명자가 수정할 수 없습니다.
-
-> **integrity_hash**: 완성 PDF와 감사추적인증서를 합성한 SHA-256 무결성 해시입니다. 계약 완료(`status: completed`) 후에만 값이 채워지며, 그 외에는 `null`입니다.
-
-> **cancelled_at / cancelled_reason**: 계약이 취소된 경우(`status: cancelled`)에만 값이 채워지며, 그 외에는 `null`입니다.
-
-> **security_method**: 참여자별 서명 보안 수단입니다. `password`, `identity_verification`, `null` 중 하나이며, 본인인증 결과 식별자, CI 해시, PG 거래 ID 등 민감한 인증 결과값은 Public API 응답에 포함되지 않습니다.
-
-> **mobile_alimtalk_enabled**: 해당 참여자에게 모바일 알림톡 발송을 시도하는 계약인지 나타냅니다. 연락처가 없으면 알림톡은 발송되지 않습니다.
-
 ---
 
 ### 계약서 상태 조회
@@ -305,21 +307,10 @@ Content-Type: application/json
 
 **variables 사용법**
 
-- 템플릿 편집 화면에서 "변수" 타입 입력칸을 PDF 문서 위에 배치하고 변수명을 지정합니다.
-- 동일한 변수명으로 여러 위치에 배치할 수 있으며, 하나의 값을 전달하면 모든 위치에 동일하게 적용됩니다.
+- 동일한 변수명으로 여러개 배치할 수 있으며, 하나의 값을 전달하면 모두 동일하게 적용됩니다.
 - 텍스트 변수는 `variables` 객체에 `{ "변수명": "치환할 값" }` 형식으로 전달합니다.
 - 날짜 변수는 `date_precision`이 `day`이면 `YYYY-MM-DD`, `month`이면 `YYYY-MM` 형식으로 전달합니다.
 - 체크박스 변수는 `{ "변수명": true }` 또는 `{ "변수명": false }`로 전달합니다.
-- 계약서 생성 시 해당 위치에 값이 자동으로 입력되어 PDF에 렌더링됩니다.
-- 텍스트 변수에 기본값이 설정된 경우, API에서 값을 전달하지 않으면 기본값이 적용됩니다.
-- 날짜 변수와 체크박스 변수는 기본값을 사용하지 않습니다.
-- 템플릿에 정의된 변수 목록은 `GET /v1/templates/{id}` 응답의 `variables` 필드에서 확인할 수 있습니다 (동일 변수명은 하나로 통합되어 반환).
-
-**모바일 알림톡**
-
-- 템플릿 역할 또는 참여자 요청의 `mobile_alimtalk_enabled`가 true인 경우에만 서명 요청/완료 알림톡을 발송합니다.
-- 휴대폰 간편인증 역할은 `phone`이 필수입니다. 모바일 알림톡만 켜진 역할은 `phone`이 선택이지만, 비어 있으면 해당 참여자 알림톡은 발송되지 않습니다.
-- 알림톡 본문에 포함되는 발송/마감/완료 시각은 KST 기준입니다.
 
 **Request 예시**
 
@@ -528,7 +519,7 @@ Content-Type: application/json
 }
 ```
 
-`send_immediately`를 생략하거나 `false`로 보내면 초안만 생성됩니다. 즉시 발송 요청이 실패하면 계약서 생성과 사용량 차감도 함께 취소됩니다.
+`send_immediately`를 생략하거나 `false`로 보내면 초안만 생성됩니다.
 
 ### 계약서 발송
 
@@ -1137,5 +1128,5 @@ await fetch(`${BASE_URL}/contracts/${contractId}/send`, {
 
 ---
 
-*최종 수정: 2026-06-17*
-*문서 버전: 1.4*
+*최종 수정: 2026-06-27*
+*문서 버전: 1.5*
