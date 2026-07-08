@@ -14,7 +14,9 @@ const projectRoot = process.cwd();
 const skillsRoot = path.join(repoRoot, "skills");
 const claudeDestDir = process.env.CLAUDE_SKILLS_DIR || path.join(os.homedir(), ".claude", "skills");
 const codexDestDir = process.env.CODEX_SKILLS_DIR || path.join(os.homedir(), ".agents", "skills");
-const projectSkillsDir = process.env.SNOWSIGN_PROJECT_SKILLS_DIR || path.join(projectRoot, ".agents", "skills");
+const projectCodexSkillsDir =
+  process.env.SNOWSIGN_PROJECT_CODEX_SKILLS_DIR || process.env.SNOWSIGN_PROJECT_SKILLS_DIR || path.join(projectRoot, ".agents", "skills");
+const projectClaudeSkillsDir = process.env.SNOWSIGN_PROJECT_CLAUDE_SKILLS_DIR || path.join(projectRoot, ".claude", "skills");
 const mcpInstallDir = process.env.SNOWSIGN_MCP_DIR || path.join(projectRoot, ".snowsign", "mcp-repo");
 
 const scopeOptions = [
@@ -100,10 +102,11 @@ function printUsage() {
   bash install.sh --mode=dev
   bash install.sh --mode=ops
   bash install.sh --mode=full
+  bash install.sh --target=project-claude --mode=dev
   node scripts/install.mjs --all
 
 옵션:
-  --project         현재 프로젝트에만 MCP 설정 생성
+  --project         현재 프로젝트 Codex 경로에 스킬 설치, 운영/전체는 MCP 설정도 생성
   --claude          Claude Code 사용자 위치에 스킬 설치, 운영/전체는 MCP도 등록
   --codex           Codex 사용자 위치에 스킬 설치, 운영/전체는 MCP도 등록
   --both            Claude Code와 Codex 양쪽에 스킬 설치, 운영/전체는 MCP도 등록
@@ -117,6 +120,8 @@ function printUsage() {
 환경변수:
   CLAUDE_SKILLS_DIR Claude Code 스킬 설치 경로
   CODEX_SKILLS_DIR  Codex 스킬 설치 경로
+  SNOWSIGN_PROJECT_CODEX_SKILLS_DIR   프로젝트 Codex 스킬 설치 경로
+  SNOWSIGN_PROJECT_CLAUDE_SKILLS_DIR  프로젝트 Claude Code 스킬 설치 경로
   SNOWSIGN_MCP_DIR  MCP 서버 파일 설치 경로, 기본값은 ./.snowsign/mcp-repo
   SNOWSIGN_API_KEY  설치 중 추가 입력 없이 현재 값을 사용`);
 }
@@ -529,6 +534,20 @@ function isProjectTarget(targetMode) {
   return targetMode === "project" || targetMode === "project-claude" || targetMode === "project-both";
 }
 
+function projectSkillDestinations(targetMode) {
+  const destinations = [];
+
+  if (targetMode === "project" || targetMode === "project-both") {
+    destinations.push([projectCodexSkillsDir, "현재 프로젝트 / Codex"]);
+  }
+
+  if (targetMode === "project-claude" || targetMode === "project-both") {
+    destinations.push([projectClaudeSkillsDir, "현재 프로젝트 / Claude Code"]);
+  }
+
+  return destinations;
+}
+
 function targetFromScopeClient(scopeMode, clientMode) {
   if (scopeMode === "custom") return "custom";
   if (scopeMode === "project") {
@@ -766,7 +785,9 @@ function installSkillToDir(skill, destDir, label) {
 
 function installSkill(skill, targetMode) {
   if (isProjectTarget(targetMode)) {
-    installSkillToDir(skill, projectSkillsDir, "현재 프로젝트");
+    for (const [destDir, label] of projectSkillDestinations(targetMode)) {
+      installSkillToDir(skill, destDir, label);
+    }
   }
 
   if (targetMode === "claude" || targetMode === "both") {
@@ -1167,8 +1188,10 @@ function printFooter(targetMode, mcpRows = []) {
     rows.push(["스킬 경로", state.customDestDir]);
   }
 
-  if (isProjectTarget(targetMode) && !setupIncludesMcp(state.setupMode)) {
-    rows.push(["프로젝트 스킬", projectSkillsDir]);
+  if (isProjectTarget(targetMode)) {
+    for (const [destDir, label] of projectSkillDestinations(targetMode)) {
+      rows.push([label, destDir]);
+    }
   }
 
   rows.push(...mcpRows);

@@ -25,8 +25,9 @@ curl -fsSL https://raw.githubusercontent.com/JT-Company/snowsign-skills/main/ins
 설치 화면에서 다음 순서로 진행합니다.
 
 1. 설치 구성을 선택합니다.
-2. 설치 대상을 선택합니다.
-3. SnowSign API 키를 입력합니다.
+2. 설치 범위를 선택합니다.
+3. 사용할 클라이언트를 선택합니다.
+4. SnowSign API 키를 입력합니다.
 
 키를 입력하면 설치 스크립트가 현재 셸 설정 파일에 `SNOWSIGN_API_KEY`를 저장합니다.
 
@@ -42,18 +43,28 @@ curl -fsSL https://raw.githubusercontent.com/JT-Company/snowsign-skills/main/ins
 | 운영용 | MCP + `snowsign-contract-operator` | 계약 조회, 생성, 발송, 취소 같은 실제 업무 처리 |
 | 전체 | MCP + 모든 스킬 | 개발과 운영을 모두 사용할 때 |
 
-## 설치 대상
+## 설치 범위와 대상
 
-설치 대상은 네 가지 중에서 고릅니다.
+설치 범위는 세 가지 중에서 고릅니다.
 
-| 대상 | 설명 |
+| 범위 | 설명 |
 |---|---|
-| Claude Code | Claude Code 기본 스킬 경로에 설치 |
-| Codex | Codex 기본 스킬 경로에 설치 |
-| Claude Code + Codex | 양쪽에 모두 설치 |
-| 직접 경로 입력 | 원하는 스킬 설치 경로를 직접 입력 |
+| 현재 프로젝트 | 명령어를 실행한 프로젝트 안에 스킬과 MCP 설정을 설치 |
+| 내 계정 전역 | 내 계정의 Claude Code 또는 Codex 기본 경로에 설치 |
+| 원하는 경로 | 원하는 스킬 설치 경로를 직접 입력 |
 
-직접 경로를 선택하면 스킬은 입력한 경로에 설치됩니다. MCP 자동 등록은 Claude Code, Codex, Claude Code + Codex 대상에서만 수행됩니다.
+범위를 고른 뒤 사용할 클라이언트를 선택합니다.
+
+| 범위 | 클라이언트 | 스킬 설치 경로 |
+|---|---|---|
+| 현재 프로젝트 | Claude Code | `./.claude/skills` |
+| 현재 프로젝트 | Codex | `./.agents/skills` |
+| 현재 프로젝트 | Claude Code + Codex | `./.claude/skills`, `./.agents/skills` |
+| 내 계정 전역 | Claude Code | `~/.claude/skills` |
+| 내 계정 전역 | Codex | `~/.agents/skills` |
+| 내 계정 전역 | Claude Code + Codex | `~/.claude/skills`, `~/.agents/skills` |
+
+직접 경로를 선택하면 스킬은 입력한 경로에 설치됩니다. MCP 자동 등록은 현재 프로젝트, Claude Code, Codex, Claude Code + Codex 대상에서 수행됩니다.
 
 ## 제공 스킬
 
