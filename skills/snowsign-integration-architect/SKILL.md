@@ -99,7 +99,7 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 - 언제 계약을 생성/발송하는가: 수동 버튼, 상태 변경, 배치, 외부 이벤트
 - 어떤 데이터가 원천인가: ERP, CRM, 자체 DB, CSV, 사용자 입력
 - 템플릿을 쓰는가, 업로드 PDF로 계약/템플릿을 생성하는가
-- 참여자 역할, 서명 순서, 보안 수단, 만료일 정책은 무엇인가
+- 참여자 역할, 서명 순서, 보안 수단, 이메일·서명 언어, 만료일 정책은 무엇인가. 언어 기본값과 템플릿 상속도 정했는가
 - 완료/취소/거절/만료 후 내부 시스템 상태는 어떻게 바뀌는가
 - PDF/감사추적인증서는 저장하는가, 링크만 노출하는가
 - 실패/중복/재시도/부분 성공을 어떻게 처리할 것인가
@@ -155,10 +155,11 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 - 계약 생성 전체 UI를 외부 서비스 안에 넣어야 하면 브라우저 직접 API 호출 대신 Hosted Embed를 우선 검토한다.
 - Hosted Embed는 `allowed_origins`, `capabilities`, `external_system`, `external_id` 또는 `reference_id` 설계를 반드시 포함한다.
 - 같은 업무를 하나만 열게 할지, 새로고침/재시도마다 새 iframe을 허용할지에 따라 `external_id`/`reference_id` 정책을 정한다.
-- 템플릿 계약은 `GET /templates/{template_id}`로 역할명과 변수를 먼저 확인한다.
+- 템플릿 계약은 `GET /templates/{template_id}`로 역할명, 역할별 `locale`, 변수를 먼저 확인한다.
 - PDF 기반 생성은 `POST /uploads`로 업로드 세션을 만들고 업로드 완료 후 `document_upload_id`를 계약/템플릿 생성 API에 전달한다.
 - PDF 좌표는 PDF.js `getViewport({ scale: 1 })` 기준 pixel 좌표로 설계한다.
 - `participants[].role`은 템플릿의 역할명과 정확히 일치해야 한다.
+- 서명자 언어는 `locale: ko|en`으로 매핑한다. PDF 계약의 기본값은 `ko`이며 템플릿 계약은 생략 시 역할 `locale`을 상속한다.
 - 순차 서명은 참여자별 `order`를 명확히 저장한다.
 - 계약 발송은 사용량 차감과 외부 이메일 발송이 있으므로 승인/확인 UX를 둔다.
 - `completed` 이전에는 PDF 다운로드를 전제로 하지 않는다.

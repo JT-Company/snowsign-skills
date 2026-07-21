@@ -7,7 +7,7 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 
 const SERVER_NAME = "snowsign";
-const SERVER_VERSION = "0.4.2";
+const SERVER_VERSION = "0.4.3";
 const DEFAULT_BASE_URL = "https://api-snowsign.jtsnowball.com/public/v1";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -244,7 +244,7 @@ const TOOLS = [
   },
   {
     name: "snowsign_get_contract",
-    description: "스노우싸인 계약 상세 정보를 조회합니다.",
+    description: "스노우싸인 계약 상세 정보를 조회합니다. participants[].locale은 참여자의 이메일과 서명 화면 언어입니다.",
     inputSchema: objectSchema({
       contract_id: { type: "string", description: "계약 ID입니다." },
     }, ["contract_id"]),
@@ -285,7 +285,7 @@ const TOOLS = [
   },
   {
     name: "snowsign_create_contract_from_pdf",
-    description: "업로드 PDF와 필드 위치 정보로 스노우싸인 계약서를 생성합니다. send_immediately=true이면 생성 후 즉시 발송됩니다.",
+    description: "업로드 PDF와 필드 위치 정보로 스노우싸인 계약서를 생성합니다. send_immediately=true이면 생성 후 즉시 발송됩니다. participants[].locale은 ko 또는 en이며 기본값은 ko입니다.",
     inputSchema: objectSchema({
       contract: { type: "object", description: `POST /v1/contracts 요청 본문입니다. document_upload_id, participants, signature_fields를 포함합니다. ${SIGNATURE_FIELD_POLICY}` },
     }, ["contract"]),
@@ -347,7 +347,7 @@ const TOOLS = [
   },
   {
     name: "snowsign_list_templates",
-    description: "스노우싸인 템플릿 목록을 조회합니다.",
+    description: "스노우싸인 템플릿 목록을 조회합니다. signers[].locale은 역할의 기본 서명 언어입니다.",
     inputSchema: objectSchema({
       page: { type: "integer", description: "페이지 번호입니다." },
       per_page: { type: "integer", description: "페이지당 항목 수입니다." },
@@ -355,7 +355,7 @@ const TOOLS = [
   },
   {
     name: "snowsign_get_template",
-    description: "스노우싸인 템플릿 상세 정보를 조회합니다. 응답의 signers[].security_method는 email, password, easy_cert 중 하나인 역할별 보안 정책입니다. variables[].is_required는 항상 false이고, signature_fields[].is_required는 필드 타입별 정책에 따라 정규화됩니다.",
+    description: "스노우싸인 템플릿 상세 정보를 조회합니다. signers[].security_method는 역할별 보안 정책이고 signers[].locale은 역할의 기본 서명 언어입니다. variables[].is_required는 항상 false이고, signature_fields[].is_required는 필드 타입별 정책에 따라 정규화됩니다.",
     inputSchema: objectSchema({
       template_id: { type: "string", description: "템플릿 ID입니다." },
     }, ["template_id"]),
@@ -370,14 +370,14 @@ const TOOLS = [
   },
   {
     name: "snowsign_create_template_from_pdf",
-    description: "업로드 PDF와 역할/필드 위치 정보로 스노우싸인 템플릿을 생성합니다.",
+    description: "업로드 PDF와 역할/필드 위치 정보로 스노우싸인 템플릿을 생성합니다. signers[].locale은 ko 또는 en이며 기본값은 ko입니다.",
     inputSchema: objectSchema({
       template: { type: "object", description: `POST /v1/templates 요청 본문입니다. document_upload_id, signers, signature_fields를 포함합니다. ${SIGNATURE_FIELD_POLICY}` },
     }, ["template"]),
   },
   {
     name: "snowsign_create_contract_from_template",
-    description: "스노우싸인 템플릿으로 계약 초안을 생성합니다. 먼저 snowsign_get_template으로 signers[].security_method를 확인하세요. password 역할은 participants[].security={method:'password', value:'...'}가 필요하고, easy_cert 역할은 phone만 전달하며 security를 전달하지 않습니다.",
+    description: "스노우싸인 템플릿으로 계약 초안을 생성합니다. 먼저 snowsign_get_template으로 signers[].security_method와 signers[].locale을 확인하세요. password 역할은 participants[].security={method:'password', value:'...'}가 필요하고, easy_cert 역할은 phone만 전달하며 security를 전달하지 않습니다. participants[].locale은 ko 또는 en이며 생략하면 역할 locale을 상속합니다.",
     inputSchema: objectSchema({
       template_id: { type: "string", description: "템플릿 ID입니다." },
       contract: { type: "object", description: "POST /v1/templates/{id}/create-contract 요청 본문입니다." },
@@ -546,7 +546,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "스노우싸인 MCP 도구로 계약 조회, 템플릿/PDF 기반 생성, 발송, 취소, 리마인더, 다운로드를 수행하세요. 상태 변경 작업과 send_immediately=true 계약 생성은 실행 전 사용자 확인을 받으세요. PDF 기반 생성은 snowsign_upload_pdf 또는 snowsign_create_upload_session으로 document_upload_id를 준비한 뒤 snowsign_create_contract_from_pdf를 사용하세요.",
+            text: "스노우싸인 MCP 도구로 계약 조회, 템플릿/PDF 기반 생성, 발송, 취소, 리마인더, 다운로드를 수행하세요. 상태 변경 작업과 send_immediately=true 계약 생성은 실행 전 사용자 확인을 받으세요. PDF 기반 생성은 snowsign_upload_pdf 또는 snowsign_create_upload_session으로 document_upload_id를 준비한 뒤 snowsign_create_contract_from_pdf를 사용하세요. 서명자 언어 요청이 있으면 participants[].locale에 ko 또는 en을 전달하고, 템플릿 계약은 생략 시 signers[].locale을 상속합니다.",
           },
         }],
       };
@@ -559,7 +559,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "snowsign_get_api_reference_section 도구로 필요한 API 섹션을 확인한 뒤 스노우싸인 Public API 연동 코드를 작성하세요. 외부 PDF 연동은 POST /v1/uploads로 upload_id를 만들고 PDF를 업로드한 뒤 POST /v1/contracts 또는 POST /v1/templates의 document_upload_id로 전달합니다. signature_fields는 PDF.js getViewport({ scale: 1 }) 기준 pixel 좌표를 쓰며, is_required와 text_align은 필드 타입별 정규화 정책을 따릅니다. 템플릿 기반 계약 생성 플로우에서는 GET /v1/templates/{id} 응답의 signers[].security_method가 보안 정책의 기준입니다.",
+            text: "snowsign_get_api_reference_section 도구로 필요한 API 섹션을 확인한 뒤 스노우싸인 Public API 연동 코드를 작성하세요. 외부 PDF 연동은 POST /v1/uploads로 upload_id를 만들고 PDF를 업로드한 뒤 POST /v1/contracts 또는 POST /v1/templates의 document_upload_id로 전달합니다. signature_fields는 PDF.js getViewport({ scale: 1 }) 기준 pixel 좌표를 쓰며, is_required와 text_align은 필드 타입별 정규화 정책을 따릅니다. 템플릿 기반 계약 생성 플로우에서는 GET /v1/templates/{id} 응답의 signers[].security_method와 signers[].locale을 기준으로 참여자 정책을 구성합니다.",
           },
         }],
       };

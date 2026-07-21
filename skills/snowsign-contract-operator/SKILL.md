@@ -87,6 +87,7 @@ test -n "$SNOWSIGN_API_KEY"
 - 템플릿 계약 생성: `template_id`, 참여자별 템플릿 역할명(`role`), 필수 변수 값이 필요하다.
 - PDF 계약 생성: PDF 파일 또는 `document_upload_id`, 참여자, `signature_fields` 좌표가 필요하다.
 - PDF 템플릿 생성: PDF 파일 또는 `document_upload_id`, 역할(`signers`), 필요한 `signature_fields` 좌표가 필요하다.
+- 서명자 언어 요청이 있으면 `locale`을 `ko` 또는 `en`으로 지정한다. PDF 계약은 생략 시 `ko`, 템플릿 계약은 역할 언어를 사용한다.
 - 발송, 취소, 리마인더: `contract_id`가 필요하다.
 - 다운로드: `contract_id`가 필요하고 계약 상태가 `completed`여야 한다.
 
@@ -168,6 +169,7 @@ curl -sS "$BASE_URL/templates/{template_id}" \
 규칙:
 
 - `participants[].role`은 템플릿의 `signers[].role_name`과 정확히 일치해야 한다.
+- `participants[].locale`을 생략하면 `signers[].locale`을 상속한다. 사용자가 언어를 지정하면 참여자 값으로 override한다.
 - `variables` 키는 템플릿 변수 `name`과 정확히 일치해야 한다.
 - 필수 변수인데 기본값이 없고 사용자 값도 없으면 생성 전에 사용자에게 묻는다.
 - 변수는 PDF에 고정 텍스트로 렌더링되며 서명자가 수정할 수 없다.
@@ -179,7 +181,7 @@ curl -sS -X POST "$BASE_URL/templates/{template_id}/create-contract" \
   -d '{
     "title": "홍길동 근로계약서",
     "participants": [
-      { "name": "홍길동", "email": "hong@example.com", "role": "근로자", "order": 1 },
+      { "name": "홍길동", "email": "hong@example.com", "role": "근로자", "order": 1, "locale": "en" },
       { "name": "스노우싸인(주)", "email": "hr@example.com", "role": "회사", "order": 2 }
     ],
     "variables": {
@@ -198,6 +200,7 @@ PDF 파일에서 바로 계약/템플릿을 만들 때는 먼저 업로드를 �
 - PDF 경고를 미리 보여줘야 할 때만 `snowsign_run_upload_diagnostics`를 호출한다.
 - 좌표는 PDF.js `getViewport({ scale: 1 })` 기준 pixel 좌표이며 `page_number`는 1부터 시작한다.
 - `send_immediately: true`는 생성 후 즉시 발송이므로 사용자 의도가 분명할 때만 실행한다.
+- PDF 계약 참여자의 `locale` 기본값은 `ko`다. PDF 템플릿 역할은 `signers[].locale`로 기본 언어를 지정한다.
 
 계약 생성 fallback:
 
@@ -208,7 +211,7 @@ curl -sS -X POST "$BASE_URL/contracts" \
   -d '{
     "title": "외주 계약서",
     "document_upload_id": "upl_abc123",
-    "participants": [{ "role": "계약자", "name": "홍길동", "email": "hong@example.com" }],
+    "participants": [{ "role": "계약자", "name": "홍길동", "email": "hong@example.com", "locale": "en" }],
     "signature_fields": [{
       "participant": "계약자",
       "type": "signature",

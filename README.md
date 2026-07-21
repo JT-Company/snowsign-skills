@@ -129,7 +129,7 @@ MCP 서버도 `SNOWSIGN_API_KEY` 환경변수를 사용합니다. 키는 스노�
 | `snowsign_create_contract_from_template` | 템플릿으로 계약 초안 생성 |
 | `snowsign_get_api_reference_section` | API 문서 섹션 확인 |
 
-계약 생성은 템플릿 기반과 PDF 업로드 기반을 모두 지원합니다. PDF 기반 생성은 `snowsign_upload_pdf`로 `upload_id`를 만든 뒤 계약/템플릿 생성 도구의 `document_upload_id`로 전달합니다. 템플릿으로 계약을 만들 때는 먼저 `snowsign_get_template`로 `signers[].security_method`를 확인합니다. `password` 역할은 계약 생성 시 `participants[].security`에 비밀번호 값을 전달하고, `easy_cert` 역할은 연락처(`phone`)만 전달합니다.
+계약 생성은 템플릿 기반과 PDF 업로드 기반을 모두 지원합니다. PDF 기반 생성은 `snowsign_upload_pdf`로 `upload_id`를 만든 뒤 계약/템플릿 생성 도구의 `document_upload_id`로 전달합니다. 템플릿 계약은 먼저 역할별 `security_method`와 `locale`을 확인합니다. `password` 역할은 비밀번호, `easy_cert` 역할은 연락처를 전달하며, 참여자 `locale`을 생략하면 역할 언어를 사용합니다.
 
 ## 수동 설치
 

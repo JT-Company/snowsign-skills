@@ -237,8 +237,8 @@ flows:
     "status": "in_progress",
     "signing_order": "sequential",
     "participants": [
-      { "name": "홍길동", "email": "hong@example.com", "phone": "010-1234-5678", "status": "signed", "signed_at": "2025-01-06T14:30:00Z", "security_method": "identity_verification", "mobile_alimtalk_enabled": true },
-      { "name": "김철수", "email": "kim@example.com", "phone": null, "status": "pending", "signed_at": null, "security_method": "password", "mobile_alimtalk_enabled": false }
+      { "name": "홍길동", "email": "hong@example.com", "phone": "010-1234-5678", "status": "signed", "signed_at": "2025-01-06T14:30:00Z", "security_method": "identity_verification", "mobile_alimtalk_enabled": true, "locale": "en" },
+      { "name": "김철수", "email": "kim@example.com", "phone": null, "status": "pending", "signed_at": null, "security_method": "password", "mobile_alimtalk_enabled": false, "locale": "ko" }
     ],
     "variables": {
       "계약금액": "3,000,000원",
@@ -302,6 +302,7 @@ flows:
 | email | string | Y | 참여자 이메일 |
 | phone | string | N | 참여자 휴대폰 번호. 휴대폰 간편인증 사용 시 필수 |
 | mobile_alimtalk_enabled | boolean | N | 모바일 알림톡 발송 여부. 생략 시 템플릿 역할 정책 사용 |
+| locale | string | N | `ko` 또는 `en`. 생략 시 템플릿 역할 언어 사용 |
 | role | string | Y | 템플릿에 정의된 역할명 (예: "근로자", "회사") |
 | security | object | 조건부 | 템플릿 역할이 비밀번호 보호이면 필수. `{ "method": "password", "value": "..." }`로 서명 비밀번호를 전달합니다. 이메일/간편인증 역할에는 전달하지 않습니다. |
 
@@ -318,7 +319,7 @@ flows:
 {
   "title": "홍길동 근로계약서",
   "participants": [
-    { "name": "홍길동", "email": "hong@example.com", "phone": "010-1234-5678", "role": "근로자", "mobile_alimtalk_enabled": true },
+    { "name": "홍길동", "email": "hong@example.com", "phone": "010-1234-5678", "role": "근로자", "mobile_alimtalk_enabled": true, "locale": "en" },
     { "name": "스노우싸인(주)", "email": "hr@snowsign.io", "role": "회사", "security": { "method": "password", "value": "1234" } }
   ],
   "variables": {
@@ -428,6 +429,8 @@ flows:
 
 대부분의 경우 참여자는 `role` 하나로 필드와 매핑할 수 있습니다. 같은 역할명이 2명 이상이면 구분이 모호하므로 `key`와 `role_name`을 명시하세요.
 
+`participants[].locale`은 이메일과 서명 화면 언어이며 `ko` 또는 `en`을 사용합니다. 생략하면 `ko`입니다.
+
 `signature_fields` 좌표는 PDF.js `getViewport({ scale: 1 })` 기준 pixel 좌표입니다. 원점은 페이지 좌상단이며, `page_number`는 1부터 시작합니다.
 
 **signature_fields 항목 주요 필드**
@@ -466,7 +469,8 @@ flows:
       "email": "hong@example.com",
       "phone": "010-1234-5678",
       "security": { "method": "identity_verification" },
-      "mobile_alimtalk_enabled": false
+      "mobile_alimtalk_enabled": false,
+      "locale": "en"
     }
   ],
   "signature_fields": [
@@ -742,7 +746,7 @@ flows:
 | signature_fields | array | N | 입력칸/서명칸 위치 목록 |
 | integration | object | N | 외부 시스템 metadata |
 
-대부분의 경우 템플릿 역할은 문자열 배열로 만들 수 있습니다. 같은 역할명이 2개 이상이면 구분이 모호하므로 `{ "key": "...", "role_name": "..." }` 형식을 사용하세요.
+대부분의 경우 템플릿 역할은 문자열 배열로 만들 수 있습니다. 역할 언어를 지정하려면 `{ "role": "...", "locale": "ko|en" }` 형식을 사용하며 기본값은 `ko`입니다. 같은 역할명이 중복되면 `key`와 `role_name`을 명시하세요.
 
 `signature_fields` 항목은 PDF 계약서 생성 API와 동일하게 `is_required`, `text_align`, `font_size`, 날짜 메타데이터, 변수 메타데이터를 사용할 수 있습니다. `is_required`는 `text`/`date`/`checkbox`에서만 false 지정 가능하며, `text_align`은 `left`, `center`, `right` 중 하나이고 `name`, `text`, `date`, 텍스트/날짜 `variable`에 적용됩니다.
 
@@ -754,7 +758,7 @@ flows:
   "document_upload_id": "upl_template_abc",
   "signing_order": "parallel",
   "deadline_days": 14,
-  "signers": ["근로자"],
+  "signers": [{ "role": "근로자", "locale": "en" }],
   "signature_fields": [
     {
       "role": "근로자",
@@ -825,8 +829,8 @@ flows:
       "signing_order": "sequential",
       "deadline_days": 7,
       "signers": [
-        { "role_name": "근로자", "signing_order": 1, "security_method": "easy_cert", "mobile_alimtalk_enabled": true },
-        { "role_name": "회사", "signing_order": 2, "security_method": "password", "mobile_alimtalk_enabled": false }
+        { "role_name": "근로자", "signing_order": 1, "security_method": "easy_cert", "mobile_alimtalk_enabled": true, "locale": "en" },
+        { "role_name": "회사", "signing_order": 2, "security_method": "password", "mobile_alimtalk_enabled": false, "locale": "ko" }
       ]
     }
   ],
@@ -860,8 +864,8 @@ flows:
     "signing_order": "sequential",
     "deadline_days": 7,
     "signers": [
-      { "uuid": "signer-uuid-1", "role_name": "근로자", "signing_order": 1, "security_method": "easy_cert", "mobile_alimtalk_enabled": true },
-      { "uuid": "signer-uuid-2", "role_name": "회사", "signing_order": 2, "security_method": "password", "mobile_alimtalk_enabled": false }
+      { "uuid": "signer-uuid-1", "role_name": "근로자", "signing_order": 1, "security_method": "easy_cert", "mobile_alimtalk_enabled": true, "locale": "en" },
+      { "uuid": "signer-uuid-2", "role_name": "회사", "signing_order": 2, "security_method": "password", "mobile_alimtalk_enabled": false, "locale": "ko" }
     ],
     "signature_fields": [
       {
@@ -923,6 +927,7 @@ flows:
 
 `signers[].security_method`는 템플릿 역할에 저장된 서명 보안 정책입니다. 값은 `email`, `password`, `easy_cert` 중 하나이며, 값이 없으면 `email`과 동일하게 처리됩니다.
 `signers[].mobile_alimtalk_enabled`는 템플릿 역할 기반 계약 생성 시 해당 참여자에게 모바일 알림톡을 보낼지 여부입니다.
+`signers[].locale`은 역할의 기본 이메일·서명 화면 언어입니다.
 `signature_fields`에는 `type: "variable"` 필드가 제외됩니다. 변수 목록은 `variables`에 동일 변수명 중복 제거 후 반환됩니다.
 `signature_fields[].is_required`는 `signature`/`stamp`/`name`이면 항상 true이고, `text`/`date`/`checkbox`이면 저장된 필수 여부입니다.
 `variables[].is_required`는 변수 값이 서명자 입력 대상이 아니므로 항상 false입니다.
