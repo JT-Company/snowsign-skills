@@ -7,12 +7,13 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 
 const SERVER_NAME = "snowsign";
-const SERVER_VERSION = "0.4.3";
+const SERVER_VERSION = "0.4.4";
 const DEFAULT_BASE_URL = "https://api-snowsign.jtsnowball.com/public/v1";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const apiGuidePath = path.join(repoRoot, "skills", "snowsign-integration-architect", "references", "public-api-guide.md");
 const hostedEmbedGuidePath = path.join(repoRoot, "skills", "snowsign-integration-architect", "references", "hosted-embed-guide.md");
+const webhookGuidePath = path.join(repoRoot, "skills", "snowsign-integration-architect", "references", "webhook-guide.md");
 const SIGNATURE_FIELD_POLICY = "signature_fields는 PDF.js getViewport({ scale: 1 }) 기준 pixel 좌표를 사용합니다. is_required 생략 시 true이며 signature/stamp/name은 항상 true, variable은 항상 false, text/date/checkbox만 false 지정 가능합니다. text_align은 left/center/right 중 하나이며 name/text/date 필드와 텍스트/날짜 variable에만 적용됩니다. 날짜 필드/날짜 변수는 date_precision과 date_format_pattern을 사용할 수 있습니다.";
 
 if (typeof fetch !== "function") {
@@ -190,7 +191,7 @@ function referenceSection(title, filePath = apiGuidePath) {
   }
 
   if (start === -1) {
-    throw new Error(`섹션을 찾지 못했습니다: ${title}. 사용 가능: ${listReferenceSections().join(", ")}`);
+    throw new Error(`섹션을 찾지 못했습니다: ${title}. 사용 가능: ${listReferenceSections(filePath).join(", ")}`);
   }
 
   let end = lines.length;
@@ -235,7 +236,7 @@ function objectSchema(properties, required) {
 const TOOLS = [
   {
     name: "snowsign_list_contracts",
-    description: "스노우싸인 계약 목록을 조회합니다.",
+    description: "스노우싸인 계약 목록을 조회합니다. email_issue와 email_issue_count로 서명 요청·리마인드 이메일의 미해결 전달 문제를 확인할 수 있습니다.",
     inputSchema: objectSchema({
       page: { type: "integer", description: "페이지 번호입니다." },
       per_page: { type: "integer", description: "페이지당 항목 수입니다." },
@@ -244,14 +245,14 @@ const TOOLS = [
   },
   {
     name: "snowsign_get_contract",
-    description: "스노우싸인 계약 상세 정보를 조회합니다. participants[].locale은 참여자의 이메일과 서명 화면 언어입니다.",
+    description: "스노우싸인 계약 상세 정보를 조회합니다. participants[].locale은 이메일·서명 화면 언어이고 participants[].email_delivery는 최근 발송 시도와 미해결 전달 문제입니다.",
     inputSchema: objectSchema({
       contract_id: { type: "string", description: "계약 ID입니다." },
     }, ["contract_id"]),
   },
   {
     name: "snowsign_get_contract_status",
-    description: "스노우싸인 계약 상태를 조회합니다.",
+    description: "스노우싸인 계약 상태를 조회합니다. email_issue와 email_issue_count도 함께 반환합니다.",
     inputSchema: objectSchema({
       contract_id: { type: "string", description: "계약 ID입니다." },
     }, ["contract_id"]),
@@ -420,6 +421,18 @@ const TOOLS = [
       title: { type: "string", description: "섹션 제목입니다. 예: 서버에서 Embed Session 생성, 결과 이벤트 수신, 문제 해결" },
     }, ["title"]),
   },
+  {
+    name: "snowsign_list_webhook_guide_sections",
+    description: "스노우싸인 Webhook 개발 가이드의 섹션 목록을 보여줍니다.",
+    inputSchema: objectSchema({}),
+  },
+  {
+    name: "snowsign_get_webhook_guide_section",
+    description: "스노우싸인 Webhook 개발 가이드의 특정 섹션을 반환합니다.",
+    inputSchema: objectSchema({
+      title: { type: "string", description: "섹션 제목입니다. 예: 이벤트 타입, 서명 검증, 수신 서버 가이드" },
+    }, ["title"]),
+  },
 ];
 
 const PROMPTS = [
@@ -436,6 +449,11 @@ const PROMPTS = [
   {
     name: "snowsign_hosted_embed_reference",
     description: "스노우싸인 Hosted Embed iframe 연동 구현을 돕습니다.",
+    arguments: [],
+  },
+  {
+    name: "snowsign_webhook_reference",
+    description: "스노우싸인 Webhook 연동 구현과 서명 검증을 돕습니다.",
     arguments: [],
   },
 ];
@@ -516,6 +534,8 @@ async function callTool(name, args) {
   if (name === "snowsign_get_api_reference_section") return textContent(referenceSection(args.title));
   if (name === "snowsign_list_hosted_embed_guide_sections") return jsonText({ sections: listReferenceSections(hostedEmbedGuidePath) });
   if (name === "snowsign_get_hosted_embed_guide_section") return textContent(referenceSection(args.title, hostedEmbedGuidePath));
+  if (name === "snowsign_list_webhook_guide_sections") return jsonText({ sections: listReferenceSections(webhookGuidePath) });
+  if (name === "snowsign_get_webhook_guide_section") return textContent(referenceSection(args.title, webhookGuidePath));
   throw new Error(`알 수 없는 tool입니다: ${name}`);
 }
 
@@ -546,7 +566,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "스노우싸인 MCP 도구로 계약 조회, 템플릿/PDF 기반 생성, 발송, 취소, 리마인더, 다운로드를 수행하세요. 상태 변경 작업과 send_immediately=true 계약 생성은 실행 전 사용자 확인을 받으세요. PDF 기반 생성은 snowsign_upload_pdf 또는 snowsign_create_upload_session으로 document_upload_id를 준비한 뒤 snowsign_create_contract_from_pdf를 사용하세요. 서명자 언어 요청이 있으면 participants[].locale에 ko 또는 en을 전달하고, 템플릿 계약은 생략 시 signers[].locale을 상속합니다.",
+            text: "스노우싸인 MCP 도구로 계약 조회, 템플릿/PDF 기반 생성, 발송, 취소, 리마인더, 다운로드를 수행하세요. 상태 변경 작업과 send_immediately=true 계약 생성은 실행 전 사용자 확인을 받으세요. PDF 기반 생성은 snowsign_upload_pdf 또는 snowsign_create_upload_session으로 document_upload_id를 준비한 뒤 snowsign_create_contract_from_pdf를 사용하세요. 서명자 언어 요청이 있으면 participants[].locale에 ko 또는 en을 전달하고, 템플릿 계약은 생략 시 signers[].locale을 상속합니다. 이메일 전달 상태 요청에는 계약의 email_issue와 참여자 email_delivery를 확인하세요.",
           },
         }],
       };
@@ -559,7 +579,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "snowsign_get_api_reference_section 도구로 필요한 API 섹션을 확인한 뒤 스노우싸인 Public API 연동 코드를 작성하세요. 외부 PDF 연동은 POST /v1/uploads로 upload_id를 만들고 PDF를 업로드한 뒤 POST /v1/contracts 또는 POST /v1/templates의 document_upload_id로 전달합니다. signature_fields는 PDF.js getViewport({ scale: 1 }) 기준 pixel 좌표를 쓰며, is_required와 text_align은 필드 타입별 정규화 정책을 따릅니다. 템플릿 기반 계약 생성 플로우에서는 GET /v1/templates/{id} 응답의 signers[].security_method와 signers[].locale을 기준으로 참여자 정책을 구성합니다.",
+            text: "snowsign_get_api_reference_section 도구로 필요한 API 섹션을 확인한 뒤 스노우싸인 Public API 연동 코드를 작성하세요. 외부 PDF 연동은 POST /v1/uploads로 upload_id를 만들고 PDF를 업로드한 뒤 POST /v1/contracts 또는 POST /v1/templates의 document_upload_id로 전달합니다. signature_fields는 PDF.js getViewport({ scale: 1 }) 기준 pixel 좌표를 쓰며, is_required와 text_align은 필드 타입별 정규화 정책을 따릅니다. 템플릿 기반 계약 생성 플로우에서는 GET /v1/templates/{id} 응답의 signers[].security_method와 signers[].locale을 기준으로 참여자 정책을 구성합니다. 이메일 전달 실패·반송·수신거부는 Webhook 이벤트가 아니므로 계약 목록·상세·상태 API로 확인합니다.",
           },
         }],
       };
@@ -573,6 +593,19 @@ async function handle(method, params = {}) {
           content: {
             type: "text",
             text: "snowsign_get_hosted_embed_guide_section 도구로 필요한 Hosted Embed 섹션을 확인하세요. 외부 서버는 snowsign_create_embed_session 또는 POST /v1/embed-sessions로 flows와 allowed_origins를 전달해 iframe_url을 발급하고, 브라우저에는 API Key 없이 iframe_url만 전달합니다. iframe 내부 exchange API는 직접 호출하지 않습니다.",
+          },
+        }],
+      };
+    }
+
+    if (params.name === "snowsign_webhook_reference") {
+      return {
+        description: "스노우싸인 Webhook 참조",
+        messages: [{
+          role: "user",
+          content: {
+            type: "text",
+            text: "snowsign_get_webhook_guide_section 도구로 필요한 Webhook 섹션을 확인하세요. X-Webhook-Signature를 raw body와 secret으로 HMAC-SHA256 검증하고 5초 안에 2xx를 응답한 뒤 비동기 처리하세요. 이메일 전달 실패·반송·수신거부는 Webhook으로 발행되지 않으므로 Public API 조회를 사용합니다.",
           },
         }],
       };

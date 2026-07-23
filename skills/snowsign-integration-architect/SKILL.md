@@ -102,7 +102,7 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 - 참여자 역할, 서명 순서, 보안 수단, 이메일·서명 언어, 만료일 정책은 무엇인가. 언어 기본값과 템플릿 상속도 정했는가
 - 완료/취소/거절/만료 후 내부 시스템 상태는 어떻게 바뀌는가
 - PDF/감사추적인증서는 저장하는가, 링크만 노출하는가
-- 실패/중복/재시도/부분 성공을 어떻게 처리할 것인가
+- 실패/중복/재시도/부분 성공을 어떻게 처리할 것인가. 계약 이메일 전달 실패·반송·수신거부를 어떻게 조회·표시할 것인가
 
 요구가 부적절하면 명확히 지적한다. 예: 서명 검증 없는 웹훅 처리, raw body 없이 HMAC 검증, 계약 발송 자동화에 승인 단계 없음, API Key를 클라이언트에 노출, 완료 이벤트를 DB 업데이트 없이 이메일 발송만 처리.
 
@@ -162,6 +162,7 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 - 서명자 언어는 `locale: ko|en`으로 매핑한다. PDF 계약의 기본값은 `ko`이며 템플릿 계약은 생략 시 역할 `locale`을 상속한다.
 - 순차 서명은 참여자별 `order`를 명확히 저장한다.
 - 계약 발송은 사용량 차감과 외부 이메일 발송이 있으므로 승인/확인 UX를 둔다.
+- 계약 이메일 전달 상태는 목록·상태의 `email_issue`와 상세의 `participants[].email_delivery`로 조회한다. 발송 API 성공을 실제 전달 완료로 간주하지 않는다.
 - `completed` 이전에는 PDF 다운로드를 전제로 하지 않는다.
 - 외부 API 실패는 사용자 메시지, 재시도 가능성, 내부 상태를 분리해 처리한다.
 
@@ -172,6 +173,7 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 - 5초 내 2xx 응답 후 큐/잡으로 비동기 처리한다.
 - `contract_id + event + timestamp` 또는 별도 이벤트 ID로 idempotency를 보장한다.
 - `contract.completed`, `contract.cancelled`, `contract.expired`, `participant.declined`는 내부 상태 전이를 정의한다.
+- 이메일 전달 실패·반송·수신거부는 Webhook 이벤트가 아니므로 계약 목록·상세·상태 API 조회로 별도 동기화한다.
 - 이벤트 순서 역전과 중복 수신을 고려한다.
 - 수동 재전송을 고려해 재처리 로직을 멱등하게 만든다.
 - Webhook Secret은 환경변수/secret manager로 관리하고 로테이션 절차를 둔다.

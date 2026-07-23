@@ -66,6 +66,7 @@ test -n "$SNOWSIGN_API_KEY"
 | 계약서 목록 보여줘, 완료된 계약 찾아줘 | `snowsign_list_contracts` | `GET /contracts` |
 | 특정 계약 상태 확인 | `snowsign_get_contract_status` | `GET /contracts/{contract_id}/status` |
 | 특정 계약 상세 확인 | `snowsign_get_contract` | `GET /contracts/{contract_id}` |
+| 계약 이메일 전달/반송 확인 | `snowsign_get_contract`, `snowsign_get_contract_status` | `GET /contracts/{contract_id}`, `GET /contracts/{contract_id}/status` |
 | 템플릿 목록/상세 확인 | `snowsign_list_templates`, `snowsign_get_template` | `GET /templates`, `GET /templates/{template_id}` |
 | 새 계약서 만들어줘, 템플릿으로 계약서 만들어줘 | `snowsign_create_contract_from_template` | `POST /templates/{template_id}/create-contract` |
 | 이 PDF로 계약서 만들어줘 | `snowsign_upload_pdf`, `snowsign_create_contract_from_pdf` | `POST /uploads`, `POST /contracts` |
@@ -155,7 +156,7 @@ curl -sS "$BASE_URL/contracts/{contract_id}" \
   -H "X-API-Key: $SNOWSIGN_API_KEY"
 ```
 
-결과 요약 시에는 보통 `contract_id`, `title`, `status`, `created_at`, `sent_at`, `completed_at`, 참여자 상태를 중심으로 답한다.
+결과 요약 시에는 보통 `contract_id`, `title`, `status`, `created_at`, `sent_at`, `completed_at`, 참여자 상태를 중심으로 답한다. `email_issue`가 true이면 `email_issue_count`와 참여자별 `email_delivery.unresolved_issue`를 함께 확인하고, 정규화된 `failure_reason`만 사용자에게 설명한다.
 
 ## 템플릿 계약 생성
 
@@ -252,6 +253,8 @@ curl -sS -X POST "$BASE_URL/contracts/{contract_id}/remind" \
 ```
 
 실행 후에는 성공 여부, 현재 상태, 발송/취소 시각처럼 사용자가 확인해야 할 값만 요약한다.
+
+발송·리마인더 API 성공은 발송 요청이 접수됐다는 의미다. 사용자가 실제 전달이나 반송 여부를 물으면 계약 상세를 다시 조회해 참여자별 `email_delivery.status`를 확인한다. `failed`, `bounced`, `complained`는 문제 상태이며, 미해결 `complained` 참여자는 리마인더 대상에서 제외된다.
 
 ## 다운로드
 

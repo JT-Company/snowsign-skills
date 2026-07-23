@@ -857,10 +857,12 @@ function prepareMcpRepo() {
   fs.mkdirSync(path.join(mcpInstallDir, "mcp"), { recursive: true });
   fs.mkdirSync(path.join(mcpInstallDir, "skills", "snowsign-integration-architect", "references"), { recursive: true });
   fs.cpSync(path.join(repoRoot, "mcp", "snowsign_mcp.mjs"), path.join(mcpInstallDir, "mcp", "snowsign_mcp.mjs"));
-  fs.cpSync(
-    path.join(repoRoot, "skills", "snowsign-integration-architect", "references", "public-api-guide.md"),
-    path.join(mcpInstallDir, "skills", "snowsign-integration-architect", "references", "public-api-guide.md"),
-  );
+  for (const filename of ["public-api-guide.md", "hosted-embed-guide.md", "webhook-guide.md"]) {
+    fs.cpSync(
+      path.join(repoRoot, "skills", "snowsign-integration-architect", "references", filename),
+      path.join(mcpInstallDir, "skills", "snowsign-integration-architect", "references", filename),
+    );
+  }
   fs.chmodSync(path.join(mcpInstallDir, "mcp", "snowsign_mcp.mjs"), 0o755);
   return path.join(mcpInstallDir, "mcp", "snowsign_mcp.mjs");
 }

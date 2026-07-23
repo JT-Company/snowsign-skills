@@ -105,7 +105,7 @@ curl -fsSL https://raw.githubusercontent.com/JT-Company/snowsign-skills/main/ins
 
 ## MCP로 사용하기
 
-MCP 서버는 위 두 스킬의 MCP 버전입니다. 에이전트가 SnowSign API를 도구로 직접 호출하고, API 문서 섹션도 도구로 확인할 수 있습니다.
+MCP 서버는 위 두 스킬의 MCP 버전입니다. 에이전트가 SnowSign API를 도구로 직접 호출하고, Public API·Hosted Embed·Webhook 문서 섹션도 도구로 확인할 수 있습니다.
 
 MCP 서버도 Node.js 18 이상으로 실행됩니다. 별도 npm 패키지는 필요하지 않습니다.
 
@@ -120,6 +120,7 @@ MCP 서버도 `SNOWSIGN_API_KEY` 환경변수를 사용합니다. 키는 스노�
 | 도구 | 설명 |
 |---|---|
 | `snowsign_list_contracts` | 계약 목록 조회 |
+| `snowsign_get_contract` | 계약 상세 및 이메일 전달 상태 조회 |
 | `snowsign_send_contract` | 계약 발송 |
 | `snowsign_cancel_contract` | 계약 취소 |
 | `snowsign_list_templates` | 템플릿 목록 조회 |
@@ -128,8 +129,10 @@ MCP 서버도 `SNOWSIGN_API_KEY` 환경변수를 사용합니다. 키는 스노�
 | `snowsign_create_template_from_pdf` | 업로드 PDF로 템플릿 생성 |
 | `snowsign_create_contract_from_template` | 템플릿으로 계약 초안 생성 |
 | `snowsign_get_api_reference_section` | API 문서 섹션 확인 |
+| `snowsign_get_hosted_embed_guide_section` | Hosted Embed 문서 섹션 확인 |
+| `snowsign_get_webhook_guide_section` | Webhook 문서 섹션 확인 |
 
-계약 생성은 템플릿 기반과 PDF 업로드 기반을 모두 지원합니다. PDF 기반 생성은 `snowsign_upload_pdf`로 `upload_id`를 만든 뒤 계약/템플릿 생성 도구의 `document_upload_id`로 전달합니다. 템플릿 계약은 먼저 역할별 `security_method`와 `locale`을 확인합니다. `password` 역할은 비밀번호, `easy_cert` 역할은 연락처를 전달하며, 참여자 `locale`을 생략하면 역할 언어를 사용합니다.
+계약 생성은 템플릿 기반과 PDF 업로드 기반을 모두 지원합니다. PDF 기반 생성은 `snowsign_upload_pdf`로 `upload_id`를 만든 뒤 계약/템플릿 생성 도구의 `document_upload_id`로 전달합니다. 템플릿 계약은 먼저 역할별 `security_method`와 `locale`을 확인합니다. `password` 역할은 비밀번호, `easy_cert` 역할은 연락처를 전달하며, 참여자 `locale`을 생략하면 역할 언어를 사용합니다. 계약 이메일의 실패·반송·수신거부는 계약 조회 응답의 `email_issue`와 `participants[].email_delivery`로 확인합니다.
 
 ## 수동 설치
 

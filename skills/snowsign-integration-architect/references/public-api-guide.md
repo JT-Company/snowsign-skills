@@ -204,10 +204,12 @@ flows:
     {
       "contract_id": "uuid-string",
       "title": "업무 위탁 계약서",
-      "status": "completed",
+      "status": "in_progress",
+      "email_issue": true,
+      "email_issue_count": 1,
       "created_at": "2025-01-06T10:00:00Z",
       "sent_at": "2025-01-06T10:05:00Z",
-      "completed_at": "2025-01-06T15:30:00Z"
+      "completed_at": null
     }
   ],
   "meta": {
@@ -235,10 +237,50 @@ flows:
     "title": "업무 위탁 계약서",
     "description": "2025년 프로젝트 관련 업무 위탁 계약",
     "status": "in_progress",
+    "email_issue": true,
+    "email_issue_count": 1,
     "signing_order": "sequential",
     "participants": [
-      { "name": "홍길동", "email": "hong@example.com", "phone": "010-1234-5678", "status": "signed", "signed_at": "2025-01-06T14:30:00Z", "security_method": "identity_verification", "mobile_alimtalk_enabled": true, "locale": "en" },
-      { "name": "김철수", "email": "kim@example.com", "phone": null, "status": "pending", "signed_at": null, "security_method": "password", "mobile_alimtalk_enabled": false, "locale": "ko" }
+      {
+        "name": "홍길동",
+        "email": "hong@example.com",
+        "phone": "010-1234-5678",
+        "status": "signed",
+        "signed_at": "2025-01-06T14:30:00Z",
+        "security_method": "identity_verification",
+        "mobile_alimtalk_enabled": true,
+        "locale": "en",
+        "email_delivery": {
+          "status": "delivered",
+          "attempted_at": "2025-01-06T10:05:00Z",
+          "event_at": "2025-01-06T10:05:10Z",
+          "failure_reason": null,
+          "attempt_count": 1,
+          "unresolved_issue": null
+        }
+      },
+      {
+        "name": "김철수",
+        "email": "kim@example.com",
+        "phone": null,
+        "status": "pending",
+        "signed_at": null,
+        "security_method": "password",
+        "mobile_alimtalk_enabled": false,
+        "locale": "ko",
+        "email_delivery": {
+          "status": "bounced",
+          "attempted_at": "2025-01-06T10:05:00Z",
+          "event_at": "2025-01-06T10:05:12Z",
+          "failure_reason": "수신자 이메일 주소가 존재하지 않습니다. (5.1.1)",
+          "attempt_count": 1,
+          "unresolved_issue": {
+            "status": "bounced",
+            "event_at": "2025-01-06T10:05:12Z",
+            "failure_reason": "수신자 이메일 주소가 존재하지 않습니다. (5.1.1)"
+          }
+        }
+      }
     ],
     "variables": {
       "계약금액": "3,000,000원",
@@ -255,6 +297,8 @@ flows:
 }
 ```
 
+`failure_reason`은 SMTP 진단 원문이나 수신자 주소를 노출하지 않고 표준 상태 코드로 정규화한 사용자용 메시지입니다.
+
 ---
 
 ### 계약서 상태 조회
@@ -269,6 +313,8 @@ flows:
   "data": {
     "contract_id": "uuid-string",
     "status": "in_progress",
+    "email_issue": true,
+    "email_issue_count": 1,
     "participants_status": {
       "total": 2,
       "signed": 1,
@@ -1133,5 +1179,5 @@ await fetch(`${BASE_URL}/contracts/${contractId}/send`, {
 
 ---
 
-*최종 수정: 2026-06-27*
-*문서 버전: 1.5*
+*최종 수정: 2026-07-23*
+*문서 버전: 1.7*

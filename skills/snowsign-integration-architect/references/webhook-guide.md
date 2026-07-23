@@ -78,6 +78,8 @@
 | `contract.cancelled` | 계약 취소됨 | 발송자가 취소할 때 |
 | `contract.expired` | 계약 만료됨 | 만료일 경과 시 |
 
+이메일 전달 실패·반송·수신거부는 고객 웹훅으로 발행하지 않습니다. 계약 생성자 알림 이메일 또는 Public API의 계약 목록·상세·상태 조회로 확인하세요.
+
 **권장 구독 조합:**
 - 필수: `contract.completed`, `contract.cancelled`
 - 선택: `contract.sent`, `contract.viewed`, `participant.signed`, `participant.declined`
@@ -420,5 +422,5 @@ app.listen(3000, () => console.log('Webhook server running on port 3000'));
 
 ---
 
-*최종 수정: 2026-05-30*
-*문서 버전: 1.5*
+*최종 수정: 2026-07-23*
+*문서 버전: 1.7*

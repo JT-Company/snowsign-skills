@@ -93,7 +93,7 @@ download_repo() {
   mkdir -p "$INSTALL_DIR/mcp"
   mkdir -p "$INSTALL_DIR/skills/snowsign-integration-architect/references"
   cp "$root/mcp/snowsign_mcp.mjs" "$INSTALL_DIR/mcp/snowsign_mcp.mjs"
-  cp "$root/skills/snowsign-integration-architect/references/public-api-guide.md" "$INSTALL_DIR/skills/snowsign-integration-architect/references/public-api-guide.md"
+  cp "$root/skills/snowsign-integration-architect/references/"*.md "$INSTALL_DIR/skills/snowsign-integration-architect/references/"
   SERVER_FILE="$INSTALL_DIR/mcp/snowsign_mcp.mjs"
   chmod +x "$SERVER_FILE"
 }
