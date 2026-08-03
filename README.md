@@ -14,7 +14,7 @@ SnowSign API 키도 준비해 주세요. 키는 스노우싸인 웹 콘솔에서
 조직관리 > API 키 > 새 API
 ```
 
-## 수동 설치
+## 수동 설치(레거시)
 
 아래 명령어를 터미널에 붙여 넣으면 설치 화면이 열립니다.
 
@@ -103,7 +103,7 @@ curl -fsSL https://raw.githubusercontent.com/JT-Company/snowsign-skills/main/ins
 
 설치 스크립트는 같은 이름의 기존 스킬을 새 버전으로 교체합니다.
 
-## 마켓플레이스로 설치하기
+## Claude Code 마켓플레이스로 설치하기
 
 Claude Code에서 이 저장소를 마켓플레이스로 추가하고 플러그인을 설치할 수 있습니다.
 
@@ -112,11 +112,9 @@ Claude Code에서 이 저장소를 마켓플레이스로 추가하고 플러그�
 /plugin install snowsign-skills@snowsign-skills
 ```
 
-MCP 서버를 사용하려면 Claude Code를 실행하기 전에 `SNOWSIGN_API_KEY` 환경변수를 미리 export해야 합니다.
+설치 중 SnowSign API Key 입력창이 뜨면 스노우싸인 웹 콘솔에서 발급받은 키를 입력하면 됩니다. 셸 환경변수 설정은 필요하지 않으며, 입력한 값은 Claude Code의 사용자 설정에 안전하게 저장됩니다.
 
-```bash
-export SNOWSIGN_API_KEY="your_api_key"
-```
+Codex 사용자는 Claude Code 마켓플레이스를 사용할 수 없으므로 위의 `install.sh` 수동 설치 방식을 이용하세요.
 
 ## MCP로 사용하기
 
