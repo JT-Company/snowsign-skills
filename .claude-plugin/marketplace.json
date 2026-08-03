@@ -1,9 +1,5 @@
 {
   "name": "snowsign-skills",
-  "description": "SnowSign 계약/연동 스킬 및 MCP 서버를 제공하는 Claude Code 마켓플레이스입니다.",
-  "metadata": {
-    "description": "SnowSign 계약/연동 스킬 및 MCP 서버를 제공하는 Claude Code 마켓플레이스입니다."
-  },
   "owner": {
     "name": "JT-Company"
   },
@@ -11,23 +7,7 @@
     {
       "name": "snowsign-skills",
       "source": "./",
-      "description": "SnowSign 계약/연동 스킬 및 MCP 서버",
-      "skills": [
-        "./skills/snowsign-contract-operator",
-        "./skills/snowsign-integration-architect"
-      ],
-      "mcpServers": {
-        "snowsign": {
-          "command": "node",
-          "args": [
-            "${CLAUDE_PLUGIN_ROOT}/mcp/snowsign_mcp.mjs"
-          ],
-          "env": {
-            "SNOWSIGN_API_KEY": "${SNOWSIGN_API_KEY}"
-          }
-        }
-      },
-      "strict": false
+      "description": "SnowSign 계약/연동 스킬 및 MCP 서버"
     }
   ]
 }

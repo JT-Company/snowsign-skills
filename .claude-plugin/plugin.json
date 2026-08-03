@@ -1,0 +1,24 @@
+{
+  "name": "snowsign-skills",
+  "description": "SnowSign 계약/연동 스킬 및 MCP 서버",
+  "mcpServers": {
+    "snowsign": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/mcp/snowsign_mcp.mjs"
+      ],
+      "env": {
+        "SNOWSIGN_API_KEY": "${user_config.snowsign_api_key}"
+      }
+    }
+  },
+  "userConfig": {
+    "snowsign_api_key": {
+      "type": "string",
+      "title": "SnowSign API Key",
+      "description": "스노우싸인 웹 콘솔 > 조직관리 > API 키 > 새 API에서 발급",
+      "sensitive": true,
+      "required": true
+    }
+  }
+}
