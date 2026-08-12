@@ -7,7 +7,7 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 
 const SERVER_NAME = "snowsign";
-const SERVER_VERSION = "0.4.4";
+const SERVER_VERSION = "0.5.0";
 const DEFAULT_BASE_URL = "https://api-snowsign.jtsnowball.com/public/v1";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -385,6 +385,81 @@ const TOOLS = [
     }, ["template_id", "contract"]),
   },
   {
+    name: "snowsign_create_link_signing",
+    description: "1인 서명 템플릿으로 공유 가능한 링크서명을 생성합니다. 먼저 템플릿 상세의 can_create_link_signing이 true인지 확인하세요. 반환된 link_url을 사용자에게 공유합니다.",
+    inputSchema: objectSchema({
+      template_uuid: { type: "string", description: "템플릿 조회 응답의 template_id입니다." },
+      name: { type: "string", minLength: 1, maxLength: 200, description: "링크서명 관리 이름입니다." },
+      max_submissions: { type: "integer", minimum: 1, description: "최대 제출 수입니다." },
+      description: { type: "string", description: "서명자 안내 문구입니다." },
+      expires_at: { type: "string", format: "date-time", description: "UTC ISO 8601 만료 일시입니다. 예: 2026-12-31T14:59:59Z" },
+      require_identity_verification: { type: "boolean", description: "휴대폰 간편인증 요구 여부입니다. 기본값은 false입니다." },
+      variables: { type: "object", description: "생성되는 계약에 공통 적용할 템플릿 변수 값입니다." },
+    }, ["template_uuid", "name", "max_submissions"]),
+  },
+  {
+    name: "snowsign_list_link_signings",
+    description: "조직의 링크서명 목록을 조회합니다.",
+    inputSchema: objectSchema({
+      page: { type: "integer", minimum: 1, description: "페이지 번호입니다. 기본값은 1입니다." },
+      per_page: { type: "integer", minimum: 1, maximum: 100, description: "페이지당 항목 수입니다. 기본값은 20, 최대 100입니다." },
+      status: { type: "string", enum: ["active", "paused", "closed", "expired"], description: "링크서명 상태 필터입니다." },
+      search: { type: "string", description: "링크서명 이름 또는 템플릿명 검색어입니다." },
+      sort: { type: "string", enum: ["created_at:desc", "created_at:asc", "expires_at:asc", "submission_count:desc", "name:asc"], description: "정렬값입니다. 기본값은 created_at:desc입니다." },
+    }),
+  },
+  {
+    name: "snowsign_get_link_signing",
+    description: "링크서명 상세와 생성 시 저장한 variables를 조회합니다.",
+    inputSchema: objectSchema({
+      link_signing_id: { type: "string", description: "링크서명 ID입니다." },
+    }, ["link_signing_id"]),
+  },
+  {
+    name: "snowsign_update_link_signing",
+    description: "링크서명의 전달된 설정만 수정합니다. template_uuid, variables, status는 수정할 수 없습니다.",
+    inputSchema: objectSchema({
+      link_signing_id: { type: "string", description: "링크서명 ID입니다." },
+      name: { type: "string", minLength: 1, maxLength: 200, description: "새 관리 이름입니다." },
+      description: { type: "string", description: "새 서명자 안내 문구입니다." },
+      max_submissions: { type: "integer", minimum: 1, description: "새 최대 제출 수입니다. 현재 제출 수보다 작을 수 없습니다." },
+      expires_at: { type: "string", format: "date-time", description: "UTC ISO 8601 만료 일시입니다." },
+      require_identity_verification: { type: "boolean", description: "휴대폰 간편인증 요구 여부입니다." },
+    }, ["link_signing_id"]),
+  },
+  {
+    name: "snowsign_pause_link_signing",
+    description: "active 링크서명을 일시중지해 신규 서명을 막습니다.",
+    inputSchema: objectSchema({
+      link_signing_id: { type: "string", description: "링크서명 ID입니다." },
+    }, ["link_signing_id"]),
+  },
+  {
+    name: "snowsign_resume_link_signing",
+    description: "paused 링크서명을 재개합니다.",
+    inputSchema: objectSchema({
+      link_signing_id: { type: "string", description: "링크서명 ID입니다." },
+    }, ["link_signing_id"]),
+  },
+  {
+    name: "snowsign_close_link_signing",
+    description: "링크서명을 영구 종료합니다. 종료 후 재개할 수 없습니다.",
+    inputSchema: objectSchema({
+      link_signing_id: { type: "string", description: "링크서명 ID입니다." },
+    }, ["link_signing_id"]),
+  },
+  {
+    name: "snowsign_list_link_signing_contracts",
+    description: "특정 링크서명에서 생성된 완료 계약만 조회합니다. 반환된 contract_id는 기존 계약 상세·상태·다운로드 도구에서 사용할 수 있습니다.",
+    inputSchema: objectSchema({
+      link_signing_id: { type: "string", description: "링크서명 ID입니다." },
+      page: { type: "integer", minimum: 1, description: "페이지 번호입니다. 기본값은 1입니다." },
+      per_page: { type: "integer", minimum: 1, maximum: 100, description: "페이지당 항목 수입니다. 기본값은 20, 최대 100입니다." },
+      search: { type: "string", description: "계약서명 또는 서명자 이름·이메일·연락처 검색어입니다." },
+      sort: { type: "string", enum: ["completed_at:desc", "created_at:desc", "signer_name:asc"], description: "정렬값입니다. 기본값은 completed_at:desc입니다." },
+    }, ["link_signing_id"]),
+  },
+  {
     name: "snowsign_create_embed_session",
     description: "외부 서비스 화면에서 스노우싸인 계약 생성 iframe을 열 수 있도록 Hosted Embed Session을 발급합니다. 응답의 iframe_url만 브라우저에 전달하세요.",
     inputSchema: objectSchema({
@@ -438,7 +513,7 @@ const TOOLS = [
 const PROMPTS = [
   {
     name: "snowsign_contract_operator",
-    description: "스노우싸인 계약 조회, 생성, 발송, 취소, 리마인더, 다운로드를 수행합니다.",
+    description: "스노우싸인 일반 계약과 링크서명의 조회, 생성, 상태 관리, 완료 계약 확인, 다운로드를 수행합니다.",
     arguments: [],
   },
   {
@@ -516,6 +591,48 @@ async function callTool(name, args) {
   if (name === "snowsign_create_contract_from_template") {
     return jsonText(await apiRequest("POST", `/templates/${encodeURIComponent(args.template_id)}/create-contract`, { body: args.contract }));
   }
+  if (name === "snowsign_create_link_signing") {
+    return jsonText(await apiRequest("POST", "/link-signings", {
+      body: {
+        template_uuid: args.template_uuid,
+        name: args.name,
+        max_submissions: args.max_submissions,
+        description: args.description,
+        expires_at: args.expires_at,
+        require_identity_verification: args.require_identity_verification,
+        variables: args.variables,
+      },
+    }));
+  }
+  if (name === "snowsign_list_link_signings") {
+    return jsonText(await apiRequest("GET", "/link-signings", { query: args }));
+  }
+  if (name === "snowsign_get_link_signing") {
+    return jsonText(await apiRequest("GET", `/link-signings/${encodeURIComponent(args.link_signing_id)}`));
+  }
+  if (name === "snowsign_update_link_signing") {
+    const body = {};
+    for (const key of ["name", "description", "max_submissions", "expires_at", "require_identity_verification"]) {
+      if (args[key] !== undefined) body[key] = args[key];
+    }
+    if (Object.keys(body).length === 0) {
+      throw new Error("수정할 링크서명 설정을 하나 이상 전달해야 합니다.");
+    }
+    return jsonText(await apiRequest("PATCH", `/link-signings/${encodeURIComponent(args.link_signing_id)}`, { body }));
+  }
+  if (name === "snowsign_pause_link_signing") {
+    return jsonText(await apiRequest("POST", `/link-signings/${encodeURIComponent(args.link_signing_id)}/pause`));
+  }
+  if (name === "snowsign_resume_link_signing") {
+    return jsonText(await apiRequest("POST", `/link-signings/${encodeURIComponent(args.link_signing_id)}/resume`));
+  }
+  if (name === "snowsign_close_link_signing") {
+    return jsonText(await apiRequest("POST", `/link-signings/${encodeURIComponent(args.link_signing_id)}/close`));
+  }
+  if (name === "snowsign_list_link_signing_contracts") {
+    const { link_signing_id: linkSigningId, ...query } = args;
+    return jsonText(await apiRequest("GET", `/link-signings/${encodeURIComponent(linkSigningId)}/contracts`, { query }));
+  }
   if (name === "snowsign_create_embed_session") {
     const body = {
       purpose: "contract_create",
@@ -566,7 +683,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "스노우싸인 MCP 도구로 계약 조회, 템플릿/PDF 기반 생성, 발송, 취소, 리마인더, 다운로드를 수행하세요. 상태 변경 작업과 send_immediately=true 계약 생성은 실행 전 사용자 확인을 받으세요. PDF 기반 생성은 snowsign_upload_pdf 또는 snowsign_create_upload_session으로 document_upload_id를 준비한 뒤 snowsign_create_contract_from_pdf를 사용하세요. 서명자 언어 요청이 있으면 participants[].locale에 ko 또는 en을 전달하고, 템플릿 계약은 생략 시 signers[].locale을 상속합니다. 이메일 전달 상태 요청에는 계약의 email_issue와 참여자 email_delivery를 확인하세요.",
+            text: "스노우싸인 MCP 도구로 일반 계약과 링크서명을 조회·운영하세요. 상태 변경 작업과 send_immediately=true 계약 생성은 실행 전 사용자 확인을 받으세요. PDF 기반 생성은 snowsign_upload_pdf 또는 snowsign_create_upload_session으로 document_upload_id를 준비한 뒤 snowsign_create_contract_from_pdf를 사용하세요. 링크서명은 snowsign_get_template에서 can_create_link_signing=true인 템플릿을 확인하고 생성하며, 결과의 link_url만 공유하세요. 일반 계약 목록에는 링크서명 계약이 포함되지 않으므로 완료 건은 snowsign_list_link_signing_contracts로 조회합니다. close는 되돌릴 수 없습니다. 이메일 전달 상태 요청에는 계약의 email_issue와 참여자 email_delivery를 확인하세요.",
           },
         }],
       };
@@ -579,7 +696,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "snowsign_get_api_reference_section 도구로 필요한 API 섹션을 확인한 뒤 스노우싸인 Public API 연동 코드를 작성하세요. 외부 PDF 연동은 POST /v1/uploads로 upload_id를 만들고 PDF를 업로드한 뒤 POST /v1/contracts 또는 POST /v1/templates의 document_upload_id로 전달합니다. signature_fields는 PDF.js getViewport({ scale: 1 }) 기준 pixel 좌표를 쓰며, is_required와 text_align은 필드 타입별 정규화 정책을 따릅니다. 템플릿 기반 계약 생성 플로우에서는 GET /v1/templates/{id} 응답의 signers[].security_method와 signers[].locale을 기준으로 참여자 정책을 구성합니다. 이메일 전달 실패·반송·수신거부는 Webhook 이벤트가 아니므로 계약 목록·상세·상태 API로 확인합니다.",
+            text: "snowsign_get_api_reference_section 도구로 필요한 API 섹션을 확인한 뒤 스노우싸인 Public API 연동 코드를 작성하세요. 외부 PDF 연동은 POST /v1/uploads로 upload_id를 만들고 PDF를 업로드한 뒤 POST /v1/contracts 또는 POST /v1/templates의 document_upload_id로 전달합니다. signature_fields는 PDF.js getViewport({ scale: 1 }) 기준 pixel 좌표를 씁니다. 링크서명은 can_create_link_signing=true인 1인 템플릿만 사용하고, 일반 계약 목록과 링크별 완료 계약 조회를 분리합니다. 템플릿 기반 계약 생성 플로우에서는 GET /v1/templates/{id} 응답의 signers[].security_method와 signers[].locale을 기준으로 참여자 정책을 구성합니다. 이메일 전달 실패·반송·수신거부는 Webhook 이벤트가 아니므로 계약 목록·상세·상태 API로 확인합니다.",
           },
         }],
       };
@@ -605,7 +722,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "snowsign_get_webhook_guide_section 도구로 필요한 Webhook 섹션을 확인하세요. X-Webhook-Signature를 raw body와 secret으로 HMAC-SHA256 검증하고 5초 안에 2xx를 응답한 뒤 비동기 처리하세요. 이메일 전달 실패·반송·수신거부는 Webhook으로 발행되지 않으므로 Public API 조회를 사용합니다.",
+            text: "snowsign_get_webhook_guide_section 도구로 필요한 Webhook 섹션을 확인하세요. X-Webhook-Signature를 raw body와 secret으로 HMAC-SHA256 검증하고 5초 안에 2xx를 응답한 뒤 비동기 처리하세요. 링크서명 완료는 participant.signed와 contract.completed의 data.link_signing으로 식별하며, 링크 토큰·URL과 링크 lifecycle 이벤트는 제공되지 않습니다. 이메일 전달 실패·반송·수신거부는 Webhook으로 발행되지 않으므로 Public API 조회를 사용합니다.",
           },
         }],
       };

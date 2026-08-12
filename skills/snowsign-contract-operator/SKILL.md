@@ -1,7 +1,6 @@
 ---
 name: snowsign-contract-operator
-description: 스노우싸인 계약 조회, 템플릿/PDF 기반 생성, 발송, 취소, 리마인드, 다운로드를 API로 직접 처리하는 운영형 스킬.
-disable-model-invocation: false
+description: 스노우싸인 일반 계약과 링크서명의 조회, 생성, 발송, 상태 관리, 완료 계약 확인, 다운로드를 Public API로 직접 처리하는 운영형 스킬.
 allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 ---
 
@@ -55,6 +54,11 @@ test -n "$SNOWSIGN_API_KEY"
 | 템플릿 파일 다운로드 | `snowsign_download_template` |
 | PDF로 템플릿 생성 | `snowsign_create_template_from_pdf` |
 | 템플릿으로 계약 생성 | `snowsign_create_contract_from_template` |
+| 링크서명 생성 | `snowsign_create_link_signing` |
+| 링크서명 목록/상세 조회 | `snowsign_list_link_signings`, `snowsign_get_link_signing` |
+| 링크서명 설정 수정 | `snowsign_update_link_signing` |
+| 링크서명 일시중지/재개/종료 | `snowsign_pause_link_signing`, `snowsign_resume_link_signing`, `snowsign_close_link_signing` |
+| 링크서명 완료 계약 조회 | `snowsign_list_link_signing_contracts` |
 | API 문서 섹션 확인 | `snowsign_get_api_reference_section` |
 
 ## 의도 매핑
@@ -79,6 +83,11 @@ test -n "$SNOWSIGN_API_KEY"
 | 감사추적인증서 받아줘 | `snowsign_download_audit_certificate` | `GET /contracts/{contract_id}/audit-certificate` |
 | 여러 계약서 다운로드 링크 만들어줘 | `snowsign_bulk_download_contracts` | `POST /contracts/bulk-download` |
 | 여러 감사추적인증서 링크 만들어줘 | `snowsign_bulk_download_audit_certificates` | `POST /contracts/bulk-audit-certificates` |
+| 링크서명 만들어줘 | `snowsign_create_link_signing` | `POST /link-signings` |
+| 링크서명 목록/상세 보여줘 | `snowsign_list_link_signings`, `snowsign_get_link_signing` | `GET /link-signings`, `GET /link-signings/{id}` |
+| 링크서명 설정을 바꿔줘 | `snowsign_update_link_signing` | `PATCH /link-signings/{id}` |
+| 링크서명 일시중지/재개/종료해줘 | 해당 상태 변경 도구 | `POST /link-signings/{id}/{action}` |
+| 이 링크의 완료 계약 보여줘 | `snowsign_list_link_signing_contracts` | `GET /link-signings/{id}/contracts` |
 
 ## 실행 전 확인 규칙
 
@@ -91,6 +100,8 @@ test -n "$SNOWSIGN_API_KEY"
 - 서명자 언어 요청이 있으면 `locale`을 `ko` 또는 `en`으로 지정한다. PDF 계약은 생략 시 `ko`, 템플릿 계약은 역할 언어를 사용한다.
 - 발송, 취소, 리마인더: `contract_id`가 필요하다.
 - 다운로드: `contract_id`가 필요하고 계약 상태가 `completed`여야 한다.
+- 링크서명 생성: `template_uuid`, `name`, `max_submissions`가 필요하다. 먼저 템플릿 상세의 `can_create_link_signing`이 `true`인지 확인한다.
+- 링크서명 만료일은 UTC ISO 8601로 전달한다. 수정·상태 변경·완료 계약 조회에는 `link_signing_id`가 필요하다.
 
 다음 호출은 상태 변경 또는 사용량 차감이 있으므로 사용자가 명시적으로 요청했을 때만 실행한다.
 
@@ -100,6 +111,7 @@ test -n "$SNOWSIGN_API_KEY"
 - 템플릿 기반 계약 생성: 새 리소스가 생성된다.
 - PDF 기반 계약/템플릿 생성: 새 리소스가 생성된다.
 - PDF 계약 생성에서 `send_immediately: true`이면 생성과 발송이 함께 수행되고 월간 계약 사용량이 차감된다.
+- 링크서명 생성·설정 수정·일시중지·재개·종료: 리소스나 외부 서명 가능 상태가 바뀐다. 종료는 되돌릴 수 없다.
 
 사용자 요청이 모호하면 실행 전 확인한다. 예: "이 계약 처리해줘"는 조회인지 발송인지 물어본다.
 
@@ -126,6 +138,11 @@ MCP 도구를 사용할 때도 상태 변경 작업은 사용자가 명시적으
 - `snowsign_remind_contract`
 - `snowsign_bulk_download_contracts`
 - `snowsign_bulk_download_audit_certificates`
+- `snowsign_create_link_signing`
+- `snowsign_update_link_signing`
+- `snowsign_pause_link_signing`
+- `snowsign_resume_link_signing`
+- `snowsign_close_link_signing`
 
 MCP 도구의 응답도 원본 전체를 그대로 보여주지 말고, 사용자에게 필요한 필드만 요약한다.
 
@@ -191,6 +208,15 @@ curl -sS -X POST "$BASE_URL/templates/{template_id}/create-contract" \
     }
   }'
 ```
+
+## 링크서명 운영
+
+- 템플릿 목록 또는 상세에서 `can_create_link_signing: true`인 1인 서명 템플릿을 선택하고 그 응답의 `template_id`를 `template_uuid`로 사용한다.
+- 생성 결과에서는 사용자에게 공유할 `link_url`을 안내한다. 내부 링크 토큰을 추출하거나 노출하지 않는다.
+- 일반 `GET /contracts` 목록에는 링크서명 계약이 포함되지 않는다. 특정 링크의 완료 계약은 `snowsign_list_link_signing_contracts`로 조회한다.
+- 완료 계약 응답의 `contract_id`는 기존 계약 상세·상태·PDF·감사추적인증서 도구에 그대로 사용할 수 있다.
+- `pause`는 신규 서명을 막고, `resume`은 다시 허용하며, `close`는 영구 종료한다. 현재 상태를 먼저 조회한 뒤 요청된 전이만 수행한다.
+- 링크서명 계약을 묶어 다운로드하는 전용 API는 없다. 필요한 완료 계약을 조회한 뒤 개별 계약 다운로드 도구를 사용한다.
 
 ## PDF 기반 생성
 

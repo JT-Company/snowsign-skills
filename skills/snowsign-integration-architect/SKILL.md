@@ -1,7 +1,6 @@
 ---
 name: snowsign-integration-architect
-description: 스노우싸인 API와 웹훅을 ERP, 자체 서비스, 자동화 워크플로우에 연동하도록 설계하고 구현 계획을 작성하는 개발/설계형 스킬.
-disable-model-invocation: false
+description: 스노우싸인 일반 계약, 링크서명, Hosted Embed, 웹훅을 ERP와 자체 서비스에 연동하도록 설계하고 구현 계획을 작성하는 개발/설계형 스킬.
 allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 ---
 
@@ -49,6 +48,7 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 - ERP/CRM/그룹웨어/자체 백오피스에 스노우싸인 계약 생성, 발송, 상태 조회, 다운로드 기능 연동
 - 외부 화면 안에서 스노우싸인 계약 생성 UI를 iframe으로 제공하는 Hosted Embed 연동
 - 템플릿 기반 또는 PDF 업로드 기반 계약/템플릿 생성 플로우 설계
+- 1인 템플릿 기반 링크서명 생성·관리와 완료 계약 수집 플로우 설계
 - 계약 완료, 취소, 만료, 참여자 서명 이벤트를 웹훅으로 받아 후속 업무 자동화
 - 내부 DB 상태와 스노우싸인 계약 상태 동기화
 - 워크플로우 자동화 스크립트, 배치, 큐/잡 처리 설계
@@ -63,6 +63,7 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 - Webhook은 5초 안에 2xx를 응답하고 실제 처리는 비동기화한다.
 - API Key와 Webhook Secret은 코드, 로그, 답변 예시에 노출하지 않는다.
 - 계약 생성은 기본적으로 초안(`draft`) 생성이다. PDF 기반 생성에서 `send_immediately: true`를 쓰거나 발송 API를 호출하면 참여자에게 발송된다.
+- 링크서명은 API 응답의 `link_url`만 외부에 공유하며 내부 링크 토큰을 저장하거나 노출하지 않는다.
 - 상태 변경 API와 실제 발송은 사용자 확인 또는 명확한 업무 트리거 없이는 실행하지 않는다.
 
 ## 전체 프로세스
@@ -99,6 +100,7 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 - 언제 계약을 생성/발송하는가: 수동 버튼, 상태 변경, 배치, 외부 이벤트
 - 어떤 데이터가 원천인가: ERP, CRM, 자체 DB, CSV, 사용자 입력
 - 템플릿을 쓰는가, 업로드 PDF로 계약/템플릿을 생성하는가
+- 한 링크로 여러 사람이 각각 계약을 완료하는 링크서명이 필요한가. 최대 제출 수, 만료일, 본인인증, 일시중지·종료 정책은 무엇인가
 - 참여자 역할, 서명 순서, 보안 수단, 이메일·서명 언어, 만료일 정책은 무엇인가. 언어 기본값과 템플릿 상속도 정했는가
 - 완료/취소/거절/만료 후 내부 시스템 상태는 어떻게 바뀌는가
 - PDF/감사추적인증서는 저장하는가, 링크만 노출하는가
@@ -156,6 +158,9 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 - Hosted Embed는 `allowed_origins`, `capabilities`, `external_system`, `external_id` 또는 `reference_id` 설계를 반드시 포함한다.
 - 같은 업무를 하나만 열게 할지, 새로고침/재시도마다 새 iframe을 허용할지에 따라 `external_id`/`reference_id` 정책을 정한다.
 - 템플릿 계약은 `GET /templates/{template_id}`로 역할명, 역할별 `locale`, 변수를 먼저 확인한다.
+- 링크서명은 템플릿 응답의 `can_create_link_signing`이 `true`인 1인 서명 템플릿만 사용하고, 응답의 `template_id`를 `template_uuid`로 전달한다.
+- 일반 계약 목록에는 링크서명 계약이 포함되지 않으므로 링크별 완료 계약 API를 별도 동기화하고, 반환된 `contract_id`로 상세·상태·문서를 조회한다.
+- 링크서명 생성·수정·일시중지·재개·종료 권한과 확인 UX를 설계한다. 종료는 되돌릴 수 없음을 명시한다.
 - PDF 기반 생성은 `POST /uploads`로 업로드 세션을 만들고 업로드 완료 후 `document_upload_id`를 계약/템플릿 생성 API에 전달한다.
 - PDF 좌표는 PDF.js `getViewport({ scale: 1 })` 기준 pixel 좌표로 설계한다.
 - `participants[].role`은 템플릿의 역할명과 정확히 일치해야 한다.
@@ -173,6 +178,7 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 - 5초 내 2xx 응답 후 큐/잡으로 비동기 처리한다.
 - `contract_id + event + timestamp` 또는 별도 이벤트 ID로 idempotency를 보장한다.
 - `contract.completed`, `contract.cancelled`, `contract.expired`, `participant.declined`는 내부 상태 전이를 정의한다.
+- 링크서명 완료는 `participant.signed`와 `contract.completed`의 `data.link_signing`으로 식별한다. 링크 토큰·URL과 링크 lifecycle 이벤트는 제공되지 않는다.
 - 이메일 전달 실패·반송·수신거부는 Webhook 이벤트가 아니므로 계약 목록·상세·상태 API 조회로 별도 동기화한다.
 - 이벤트 순서 역전과 중복 수신을 고려한다.
 - 수동 재전송을 고려해 재처리 로직을 멱등하게 만든다.
@@ -186,6 +192,7 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 - PDF 업로드 세션, PDF 계약/템플릿 생성, 업로드 진단 흐름을 확인할 때
 - Hosted Embed 세션 발급, iframe 표시, postMessage 이벤트, 요청 ID 재사용 정책이 필요할 때
 - 템플릿 `signers`, `variables`, `signature_fields` 구조를 확인할 때
+- 링크서명 생성·관리 필드, 완료 계약 조회, 일반 계약 목록과의 분리 범위를 확인할 때
 - 웹훅 이벤트 타입, payload, 헤더, 서명 검증 방식이 필요할 때
 - 에러 코드, 상태값, rate limit, 샘플 구현이 필요할 때
 

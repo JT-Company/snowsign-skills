@@ -243,6 +243,9 @@ main() {
   echo "- snowsign_create_contract_from_pdf"
   echo "- snowsign_create_template_from_pdf"
   echo "- snowsign_create_contract_from_template"
+  echo "- snowsign_create_link_signing"
+  echo "- snowsign_list_link_signings"
+  echo "- snowsign_list_link_signing_contracts"
   echo "- snowsign_get_api_reference_section"
 }
 

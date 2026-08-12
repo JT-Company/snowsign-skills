@@ -40,7 +40,7 @@ curl -fsSL https://raw.githubusercontent.com/JT-Company/snowsign-skills/main/ins
 | 구성 | 설치 내용 | 추천 상황 |
 |---|---|---|
 | 개발용 | `snowsign-integration-architect` | API/웹훅 연동 설계, 구현 계획 작성 |
-| 운영용 | MCP + `snowsign-contract-operator` | 계약 조회, 생성, 발송, 취소 같은 실제 업무 처리 |
+| 운영용 | MCP + `snowsign-contract-operator` | 일반 계약과 링크서명 조회, 생성, 상태 관리 같은 실제 업무 처리 |
 | 전체 | MCP + 모든 스킬 | 개발과 운영을 모두 사용할 때 |
 
 ## 설치 범위와 대상
@@ -70,8 +70,8 @@ curl -fsSL https://raw.githubusercontent.com/JT-Company/snowsign-skills/main/ins
 
 | 스킬 | 용도 |
 |---|---|
-| `snowsign-contract-operator` | SnowSign 계약 조회, 생성, 발송, 취소, 리마인더, 다운로드를 API로 직접 처리합니다. |
-| `snowsign-integration-architect` | SnowSign Public API와 웹훅을 ERP, 자체 서비스, 자동화 워크플로우에 연동하도록 설계합니다. |
+| `snowsign-contract-operator` | SnowSign 일반 계약과 링크서명의 조회, 생성, 상태 관리, 완료 계약 확인, 다운로드를 API로 직접 처리합니다. |
+| `snowsign-integration-architect` | SnowSign Public API, 링크서명, Hosted Embed, 웹훅을 ERP와 자체 서비스에 연동하도록 설계합니다. |
 
 ## API 키 바꾸기
 
@@ -141,11 +141,14 @@ MCP 서버도 `SNOWSIGN_API_KEY` 환경변수를 사용합니다. 키는 스노�
 | `snowsign_create_contract_from_pdf` | 업로드 PDF로 계약 생성 |
 | `snowsign_create_template_from_pdf` | 업로드 PDF로 템플릿 생성 |
 | `snowsign_create_contract_from_template` | 템플릿으로 계약 초안 생성 |
+| `snowsign_create_link_signing` | 1인 템플릿으로 링크서명 생성 |
+| `snowsign_list_link_signings` | 링크서명 목록 조회 |
+| `snowsign_list_link_signing_contracts` | 링크별 완료 계약 조회 |
 | `snowsign_get_api_reference_section` | API 문서 섹션 확인 |
 | `snowsign_get_hosted_embed_guide_section` | Hosted Embed 문서 섹션 확인 |
 | `snowsign_get_webhook_guide_section` | Webhook 문서 섹션 확인 |
 
-계약 생성은 템플릿 기반과 PDF 업로드 기반을 모두 지원합니다. PDF 기반 생성은 `snowsign_upload_pdf`로 `upload_id`를 만든 뒤 계약/템플릿 생성 도구의 `document_upload_id`로 전달합니다. 템플릿 계약은 먼저 역할별 `security_method`와 `locale`을 확인합니다. `password` 역할은 비밀번호, `easy_cert` 역할은 연락처를 전달하며, 참여자 `locale`을 생략하면 역할 언어를 사용합니다. 계약 이메일의 실패·반송·수신거부는 계약 조회 응답의 `email_issue`와 `participants[].email_delivery`로 확인합니다.
+계약 생성은 템플릿 기반과 PDF 업로드 기반을 모두 지원합니다. PDF 기반 생성은 `snowsign_upload_pdf`로 `upload_id`를 만든 뒤 계약/템플릿 생성 도구의 `document_upload_id`로 전달합니다. 템플릿 계약은 먼저 역할별 `security_method`와 `locale`을 확인합니다. 링크서명은 템플릿 상세의 `can_create_link_signing`이 `true`인 템플릿으로 생성하고 반환된 `link_url`을 공유합니다. 일반 계약 목록에는 링크서명 계약이 포함되지 않으므로 링크별 완료 계약 도구로 조회합니다. 계약 이메일의 실패·반송·수신거부는 계약 조회 응답의 `email_issue`와 `participants[].email_delivery`로 확인합니다.
 
 자동 설치가 어렵다면 저장소를 받은 뒤 직접 복사할 수 있습니다.
 

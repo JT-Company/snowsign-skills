@@ -78,6 +78,8 @@
 | `contract.cancelled` | 계약 취소됨 | 발송자가 취소할 때 |
 | `contract.expired` | 계약 만료됨 | 만료일 경과 시 |
 
+위 7개 이벤트 중 1개 이상을 선택해야 합니다. 미지원 이벤트는 거부되며 중복값은 한 번만 저장됩니다.
+
 이메일 전달 실패·반송·수신거부는 고객 웹훅으로 발행하지 않습니다. 계약 생성자 알림 이메일 또는 Public API의 계약 목록·상세·상태 조회로 확인하세요.
 
 **권장 구독 조합:**
@@ -99,6 +101,12 @@
 ```
 
 `timestamp`와 `*_at` 시각 필드는 UTC 기준입니다.
+
+링크서명 완료 시 `participant.signed` 다음 `contract.completed`가 발행됩니다. 두 이벤트의 `data`에만 다음 참조가 추가되며 링크 토큰과 URL은 포함되지 않습니다. 링크 생성·일시중지·재개·종료·만료 이벤트는 제공하지 않습니다.
+
+```json
+{ "link_signing": { "id": "link-signing-uuid", "name": "입사 동의서" } }
+```
 
 **HTTP 헤더**
 
@@ -166,6 +174,8 @@
 }
 ```
 
+링크서명은 참여자가 한 명이므로 `all_signed=true`, `signed_count=1`, `total_count=1`입니다.
+
 ---
 
 ### participant.declined
@@ -205,7 +215,7 @@
 }
 ```
 
-> `download_url`은 서명된 계약서 PDF의 임시 다운로드 URL입니다 (1시간 유효).
+> `download_url`은 서명된 계약서 PDF의 1시간 유효 임시 URL입니다.
 
 > `security_method`는 참여자에게 설정된 서명 보안 수단입니다. 값은 `password`, `identity_verification`, `null` 중 하나이며, 웹훅에는 휴대폰 번호, 본인인증 결과 식별자, CI 해시, PG 거래 ID, 인증된 휴대폰 번호 등 민감한 인증 결과값이 포함되지 않습니다.
 

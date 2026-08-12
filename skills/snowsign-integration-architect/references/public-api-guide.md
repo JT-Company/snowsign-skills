@@ -26,6 +26,10 @@
   - [템플릿 목록 조회](#템플릿-목록-조회)
   - [템플릿 상세 조회](#템플릿-상세-조회)
   - [템플릿 원본 파일 다운로드](#템플릿-원본-파일-다운로드)
+- [링크서명 API](#링크서명-api)
+  - [링크서명 생성](#링크서명-생성)
+  - [링크서명 조회 및 관리](#링크서명-조회-및-관리)
+  - [완료 계약 조회](#완료-계약-조회)
 - [에러 처리](#에러-처리)
 - [Rate Limiting](#rate-limiting)
 - [샘플 코드](#샘플-코드)
@@ -101,6 +105,19 @@ X-API-Key: YOUR_API_KEY
 | GET | [/v1/templates](#템플릿-목록-조회) | 템플릿 목록 조회 |
 | GET | [/v1/templates/{id}](#템플릿-상세-조회) | 템플릿 상세 조회 |
 | GET | [/v1/templates/{id}/download](#템플릿-원본-파일-다운로드) | 템플릿 원본 파일 다운로드 |
+
+### 링크서명
+
+| 메서드 | 엔드포인트 | 설명 |
+|--------|-----------|------|
+| POST | [/v1/link-signings](#링크서명-생성) | 링크서명 생성 |
+| GET | [/v1/link-signings](#링크서명-조회-및-관리) | 링크서명 목록 조회 |
+| GET | [/v1/link-signings/{id}](#링크서명-조회-및-관리) | 링크서명 상세 조회 |
+| PATCH | [/v1/link-signings/{id}](#링크서명-조회-및-관리) | 링크서명 설정 수정 |
+| POST | `/v1/link-signings/{id}/pause` | 일시중지 |
+| POST | `/v1/link-signings/{id}/resume` | 재개 |
+| POST | `/v1/link-signings/{id}/close` | 종료 |
+| GET | [/v1/link-signings/{id}/contracts](#완료-계약-조회) | 링크별 완료 계약 조회 |
 
 ---
 
@@ -299,6 +316,8 @@ flows:
 
 `failure_reason`은 SMTP 진단 원문이나 수신자 주소를 노출하지 않고 표준 상태 코드로 정규화한 사용자용 메시지입니다.
 
+링크서명으로 생성된 계약에는 `link_signing: { "id": "...", "name": "..." }`이 추가됩니다. 일반 계약에는 이 키가 없습니다.
+
 ---
 
 ### 계약서 상태 조회
@@ -323,6 +342,8 @@ flows:
   }
 }
 ```
+
+링크서명으로 생성된 계약의 상태 응답에도 같은 `link_signing` 객체가 추가됩니다.
 
 ---
 
@@ -874,6 +895,7 @@ flows:
       "category": "HR",
       "signing_order": "sequential",
       "deadline_days": 7,
+      "can_create_link_signing": false,
       "signers": [
         { "role_name": "근로자", "signing_order": 1, "security_method": "easy_cert", "mobile_alimtalk_enabled": true, "locale": "en" },
         { "role_name": "회사", "signing_order": 2, "security_method": "password", "mobile_alimtalk_enabled": false, "locale": "ko" }
@@ -909,6 +931,7 @@ flows:
     "category": "HR",
     "signing_order": "sequential",
     "deadline_days": 7,
+    "can_create_link_signing": false,
     "signers": [
       { "uuid": "signer-uuid-1", "role_name": "근로자", "signing_order": 1, "security_method": "easy_cert", "mobile_alimtalk_enabled": true, "locale": "en" },
       { "uuid": "signer-uuid-2", "role_name": "회사", "signing_order": 2, "security_method": "password", "mobile_alimtalk_enabled": false, "locale": "ko" }
@@ -979,6 +1002,7 @@ flows:
 `variables[].is_required`는 변수 값이 서명자 입력 대상이 아니므로 항상 false입니다.
 `signature_fields[].text_align`과 `variables[].text_align`은 `left`, `center`, `right`, `null` 중 하나입니다. 서명/체크박스처럼 텍스트 정렬 대상이 아닌 항목은 `null`입니다.
 `variables[].value_type`은 `text`, `checkbox`, `date` 중 하나입니다. 날짜 변수는 `date_precision`, `date_format_pattern`, `fill_background`, `text_align` 메타를 함께 사용합니다.
+`can_create_link_signing`은 PDF 파일이 있고 서명자 역할이 정확히 하나일 때만 `true`입니다.
 
 ---
 
@@ -1004,6 +1028,140 @@ flows:
 **Errors**: `TEMPLATE_NOT_FOUND`, `TEMPLATE_FILE_NOT_FOUND`
 
 ---
+
+## 링크서명 API
+
+### 링크서명 생성
+
+`POST /v1/link-signings`
+
+| 필드 | 필수 | 설명 |
+|------|------|------|
+| `template_uuid` | 필수 | 템플릿 조회 응답의 `template_id` |
+| `name` | 필수 | 링크서명 관리 이름 |
+| `max_submissions` | 필수 | 최대 제출 수, 1 이상 |
+| `description` | 선택 | 서명자 안내 문구 |
+| `expires_at` | 선택 | UTC ISO 8601. 예: `2026-12-31T14:59:59Z` |
+| `require_identity_verification` | 선택 | 휴대폰 간편인증 요구 여부. 기본값 `false` |
+| `variables` | 선택 | 이 링크로 생성되는 계약에 공통 적용할 템플릿 변수 값 |
+
+```json
+{
+  "template_uuid": "template-uuid",
+  "name": "2026 입사 동의서",
+  "description": "내용을 확인하고 서명해주세요.",
+  "max_submissions": 100,
+  "expires_at": "2026-12-31T14:59:59Z",
+  "require_identity_verification": false,
+  "variables": {
+    "회사명": "주식회사 스노우싸인"
+  }
+}
+```
+
+**Response (201)**
+
+```json
+{
+  "success": true,
+  "data": {
+    "link_signing_id": "link-signing-uuid",
+    "name": "2026 입사 동의서",
+    "description": "내용을 확인하고 서명해주세요.",
+    "status": "active",
+    "template": {
+      "template_id": "template-uuid",
+      "name": "입사 동의서"
+    },
+    "link_url": "https://snowsign.jtsnowball.com/link-sign/...",
+    "max_submissions": 100,
+    "submission_count": 0,
+    "expires_at": "2026-12-31T14:59:59",
+    "require_identity_verification": false,
+    "locale": "ko",
+    "created_at": "2026-08-13T09:00:00",
+    "updated_at": "2026-08-13T09:00:00"
+  }
+}
+```
+
+### 링크서명 조회 및 관리
+
+| 메서드 | Endpoint | 요청 | 설명 |
+|--------|----------|------|------|
+| GET | `/v1/link-signings` | 선택 query | 목록 조회 |
+| GET | `/v1/link-signings/{id}` | 본문 없음 | 상세와 생성 시 저장한 `variables` 조회 |
+| PATCH | `/v1/link-signings/{id}` | 모든 필드 선택 | 전달한 설정만 수정 |
+| POST | `/v1/link-signings/{id}/pause` | 본문 없음 | `active → paused` |
+| POST | `/v1/link-signings/{id}/resume` | 본문 없음 | `paused → active` |
+| POST | `/v1/link-signings/{id}/close` | 본문 없음 | 활성 또는 일시중지 링크 종료 |
+
+목록 query는 모두 선택입니다.
+
+| Query | 설명 |
+|-------|------|
+| `page` | 페이지 번호. 기본값 1 |
+| `per_page` | 페이지당 항목 수. 기본값 20, 최대 100 |
+| `status` | `active`, `paused`, `closed`, `expired` |
+| `search` | 링크서명 이름 또는 템플릿명 검색 |
+| `sort` | `created_at:desc`(기본), `created_at:asc`, `expires_at:asc`, `submission_count:desc`, `name:asc` |
+
+PATCH 요청 필드는 모두 선택이며 전달한 값만 변경합니다.
+
+| 필드 | 설명 |
+|------|------|
+| `name` | 관리 이름 |
+| `description` | 서명자 안내 문구 |
+| `max_submissions` | 현재 제출 수보다 작을 수 없는 최대 제출 수 |
+| `expires_at` | UTC ISO 8601 만료 일시 |
+| `require_identity_verification` | 휴대폰 간편인증 요구 여부 |
+
+`variables`, `template_uuid`, `status`는 PATCH로 수정할 수 없습니다.
+
+### 완료 계약 조회
+
+`GET /v1/link-signings/{link_signing_id}/contracts`
+
+요청 본문은 없습니다. `page`, `per_page`, `search`, `sort` query는 모두 선택이며 해당 링크에서 생성된 완료 계약만 반환합니다.
+
+| Query | 설명 |
+|-------|------|
+| `page` | 페이지 번호. 기본값 1 |
+| `per_page` | 페이지당 항목 수. 기본값 20, 최대 100 |
+| `search` | 계약서명 또는 서명자 이름·이메일·연락처 검색 |
+| `sort` | `completed_at:desc`(기본), `created_at:desc`, `signer_name:asc` |
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "contract_id": "contract-uuid",
+      "title": "2026 입사 동의서",
+      "status": "completed",
+      "signer_name": "홍길동",
+      "signer_email": "hong@example.com",
+      "completed_at": "2026-08-13T10:00:00",
+      "link_signing": {
+        "id": "link-signing-uuid",
+        "name": "2026 입사 동의서"
+      }
+    }
+  ],
+  "meta": {
+    "pagination": {
+      "page": 1,
+      "per_page": 20,
+      "total_items": 1,
+      "total_pages": 1,
+      "has_next": false,
+      "has_prev": false
+    }
+  }
+}
+```
+
+`contract_id`는 기존 계약 상세·상태·완료 문서·감사추적인증서 API에서 사용할 수 있습니다. 일반 `GET /v1/contracts` 목록에는 링크서명 계약이 포함되지 않습니다.
 
 ---
 
@@ -1050,6 +1208,9 @@ flows:
 | PDF_REJECTED | 지원하지 않는 PDF |
 | CONTRACT_NOT_FOUND | 계약서를 찾을 수 없음 |
 | TEMPLATE_NOT_FOUND | 템플릿을 찾을 수 없음 |
+| LINK_SIGNING_NOT_FOUND | 링크서명을 찾을 수 없음 |
+| INVALID_LINK_SIGNING_STATUS | 지원하지 않는 목록 상태 |
+| INVALID_PUBLIC_LINK_SIGNING_REQUEST | 링크서명 요청 필드 또는 값 오류 |
 | INVALID_CONTRACT_STATUS | 현재 상태에서 수행할 수 없는 작업 |
 
 ---
@@ -1179,5 +1340,5 @@ await fetch(`${BASE_URL}/contracts/${contractId}/send`, {
 
 ---
 
-*최종 수정: 2026-07-23*
-*문서 버전: 1.7*
+*최종 수정: 2026-08-13*
+*문서 버전: 1.8*
