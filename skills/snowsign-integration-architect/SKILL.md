@@ -61,6 +61,8 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 - Hosted Embed: 외부 서버가 `POST /embed-sessions`로 `iframe_url`을 발급하고, 브라우저에는 API Key 대신 `iframe_url`만 전달한다.
 - Webhook 서명: `X-Webhook-Signature`, HMAC-SHA256(raw body, secret)
 - Webhook은 5초 안에 2xx를 응답하고 실제 처리는 비동기화한다.
+- API Key는 조직 자격증명이다. 생성 리소스는 `전체 업무`에 속하고 모든 멤버용 템플릿만 조회·사용한다.
+- 결재가 필요한 발송은 자동 상신하지 않고 `APPROVAL_REQUIRED`를 반환한다.
 - API Key와 Webhook Secret은 코드, 로그, 답변 예시에 노출하지 않는다.
 - 계약 생성은 기본적으로 초안(`draft`) 생성이다. PDF 기반 생성에서 `send_immediately: true`를 쓰거나 발송 API를 호출하면 참여자에게 발송된다.
 - 링크서명은 API 응답의 `link_url`만 외부에 공유하며 내부 링크 토큰을 저장하거나 노출하지 않는다.

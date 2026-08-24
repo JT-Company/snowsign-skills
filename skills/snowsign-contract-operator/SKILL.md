@@ -15,6 +15,7 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 - Base URL: `https://api-snowsign.jtsnowball.com/public/v1`
 - 인증 헤더: `X-API-Key`
 - API Key는 `SNOWSIGN_API_KEY` 환경변수에서 읽는 것을 기본으로 한다.
+- API Key는 조직 자격증명이다. 생성 리소스는 `전체 업무`에 속하고 모든 멤버용 템플릿만 조회·사용한다.
 - 실제 API Key를 답변, 로그, 예시 코드에 노출하지 않는다.
 - 스노우싸인 MCP 도구가 사용 가능하면 MCP를 우선 사용한다.
 - MCP 도구가 없거나 실패했을 때만 `curl`을 fallback으로 사용한다.
@@ -173,7 +174,7 @@ curl -sS "$BASE_URL/contracts/{contract_id}" \
   -H "X-API-Key: $SNOWSIGN_API_KEY"
 ```
 
-결과 요약 시에는 보통 `contract_id`, `title`, `status`, `created_at`, `sent_at`, `completed_at`, 참여자 상태를 중심으로 답한다. `email_issue`가 true이면 `email_issue_count`와 참여자별 `email_delivery.unresolved_issue`를 함께 확인하고, 정규화된 `failure_reason`만 사용자에게 설명한다.
+결과 요약 시에는 보통 `contract_id`, `title`, `status`, `approval_status`, `responsible_permission_group`, `created_at`, `sent_at`, `completed_at`, 참여자 상태를 중심으로 답한다. `email_issue`가 true이면 `email_issue_count`와 참여자별 `email_delivery.unresolved_issue`를 함께 확인하고, 정규화된 `failure_reason`만 사용자에게 설명한다.
 
 ## 템플릿 계약 생성
 
@@ -309,6 +310,7 @@ curl -sS "$BASE_URL/contracts/{contract_id}/audit-certificate" \
 - `QUOTA_EXCEEDED`: 월간 사용량 한도 초과
 - `CONTRACT_NOT_FOUND`, `TEMPLATE_NOT_FOUND`: ID 오타 또는 조직 권한 확인
 - `INVALID_CONTRACT_STATUS`: 현재 계약 상태에서 불가능한 작업
+- `APPROVAL_REQUIRED`: 내부 앱에서 결재 후 발송 필요
 - HTTP `429`: API Key당 분당 100회 제한, 잠시 후 재시도
 
 ## 응답 방식

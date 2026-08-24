@@ -150,6 +150,8 @@ MCP 서버도 `SNOWSIGN_API_KEY` 환경변수를 사용합니다. 키는 스노�
 
 계약 생성은 템플릿 기반과 PDF 업로드 기반을 모두 지원합니다. PDF 기반 생성은 `snowsign_upload_pdf`로 `upload_id`를 만든 뒤 계약/템플릿 생성 도구의 `document_upload_id`로 전달합니다. 템플릿 계약은 먼저 역할별 `security_method`와 `locale`을 확인합니다. 링크서명은 템플릿 상세의 `can_create_link_signing`이 `true`인 템플릿으로 생성하고 반환된 `link_url`을 공유합니다. 일반 계약 목록에는 링크서명 계약이 포함되지 않으므로 링크별 완료 계약 도구로 조회합니다. 계약 이메일의 실패·반송·수신거부는 계약 조회 응답의 `email_issue`와 `participants[].email_delivery`로 확인합니다.
 
+API Key는 조직 자격증명입니다. MCP로 만든 계약·템플릿·링크서명은 `전체 업무`에 속하며, 템플릿은 모든 멤버가 사용할 수 있는 항목만 조회·사용합니다. 결재가 필요한 발송은 자동 상신하지 않고 `APPROVAL_REQUIRED`로 중단됩니다.
+
 자동 설치가 어렵다면 저장소를 받은 뒤 직접 복사할 수 있습니다.
 
 Claude Code:

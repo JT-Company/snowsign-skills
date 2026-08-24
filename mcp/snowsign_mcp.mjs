@@ -7,7 +7,7 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 
 const SERVER_NAME = "snowsign";
-const SERVER_VERSION = "0.5.0";
+const SERVER_VERSION = "0.6.0";
 const DEFAULT_BASE_URL = "https://api-snowsign.jtsnowball.com/public/v1";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -236,7 +236,7 @@ function objectSchema(properties, required) {
 const TOOLS = [
   {
     name: "snowsign_list_contracts",
-    description: "스노우싸인 계약 목록을 조회합니다. email_issue와 email_issue_count로 서명 요청·리마인드 이메일의 미해결 전달 문제를 확인할 수 있습니다.",
+    description: "스노우싸인 계약 목록을 조회합니다. responsible_permission_group은 관리 그룹, approval_status는 최신 결재 상태이며 email_issue로 미해결 이메일 전달 문제를 확인할 수 있습니다.",
     inputSchema: objectSchema({
       page: { type: "integer", description: "페이지 번호입니다." },
       per_page: { type: "integer", description: "페이지당 항목 수입니다." },
@@ -245,14 +245,14 @@ const TOOLS = [
   },
   {
     name: "snowsign_get_contract",
-    description: "스노우싸인 계약 상세 정보를 조회합니다. participants[].locale은 이메일·서명 화면 언어이고 participants[].email_delivery는 최근 발송 시도와 미해결 전달 문제입니다.",
+    description: "스노우싸인 계약 상세 정보를 조회합니다. 관리 그룹과 최신 결재 상태, 참여자의 이메일·서명 언어 및 이메일 전달 문제를 확인할 수 있습니다.",
     inputSchema: objectSchema({
       contract_id: { type: "string", description: "계약 ID입니다." },
     }, ["contract_id"]),
   },
   {
     name: "snowsign_get_contract_status",
-    description: "스노우싸인 계약 상태를 조회합니다. email_issue와 email_issue_count도 함께 반환합니다.",
+    description: "스노우싸인 계약 상태와 최신 결재 상태를 조회합니다. email_issue와 email_issue_count도 함께 반환합니다.",
     inputSchema: objectSchema({
       contract_id: { type: "string", description: "계약 ID입니다." },
     }, ["contract_id"]),
@@ -286,7 +286,7 @@ const TOOLS = [
   },
   {
     name: "snowsign_create_contract_from_pdf",
-    description: "업로드 PDF와 필드 위치 정보로 스노우싸인 계약서를 생성합니다. send_immediately=true이면 생성 후 즉시 발송됩니다. participants[].locale은 ko 또는 en이며 기본값은 ko입니다.",
+    description: "업로드 PDF로 전체 업무 관리 그룹의 계약서를 생성합니다. 관리 그룹 필드는 전달하지 않습니다. send_immediately=true여도 결재가 필요하면 APPROVAL_REQUIRED를 반환하며 participants[].locale 기본값은 ko입니다.",
     inputSchema: objectSchema({
       contract: { type: "object", description: `POST /v1/contracts 요청 본문입니다. document_upload_id, participants, signature_fields를 포함합니다. ${SIGNATURE_FIELD_POLICY}` },
     }, ["contract"]),
@@ -348,7 +348,7 @@ const TOOLS = [
   },
   {
     name: "snowsign_list_templates",
-    description: "스노우싸인 템플릿 목록을 조회합니다. signers[].locale은 역할의 기본 서명 언어입니다.",
+    description: "모든 멤버가 사용할 수 있는 스노우싸인 템플릿만 조회합니다. signers[].locale은 역할의 기본 서명 언어입니다.",
     inputSchema: objectSchema({
       page: { type: "integer", description: "페이지 번호입니다." },
       per_page: { type: "integer", description: "페이지당 항목 수입니다." },
@@ -371,14 +371,14 @@ const TOOLS = [
   },
   {
     name: "snowsign_create_template_from_pdf",
-    description: "업로드 PDF와 역할/필드 위치 정보로 스노우싸인 템플릿을 생성합니다. signers[].locale은 ko 또는 en이며 기본값은 ko입니다.",
+    description: "업로드 PDF로 모든 멤버가 사용할 수 있는 전체 업무 템플릿을 생성합니다. 관리 그룹 필드는 전달하지 않습니다.",
     inputSchema: objectSchema({
       template: { type: "object", description: `POST /v1/templates 요청 본문입니다. document_upload_id, signers, signature_fields를 포함합니다. ${SIGNATURE_FIELD_POLICY}` },
     }, ["template"]),
   },
   {
     name: "snowsign_create_contract_from_template",
-    description: "스노우싸인 템플릿으로 계약 초안을 생성합니다. 먼저 snowsign_get_template으로 signers[].security_method와 signers[].locale을 확인하세요. password 역할은 participants[].security={method:'password', value:'...'}가 필요하고, easy_cert 역할은 phone만 전달하며 security를 전달하지 않습니다. participants[].locale은 ko 또는 en이며 생략하면 역할 locale을 상속합니다.",
+    description: "모든 멤버가 사용할 수 있는 템플릿으로 전체 업무 관리 그룹의 계약 초안을 생성합니다. 관리 그룹 필드는 전달하지 않습니다. 먼저 signers[].security_method와 locale을 확인하고 password 역할에는 security 값을 전달하며 easy_cert 역할에는 phone만 전달합니다.",
     inputSchema: objectSchema({
       template_id: { type: "string", description: "템플릿 ID입니다." },
       contract: { type: "object", description: "POST /v1/templates/{id}/create-contract 요청 본문입니다." },
@@ -386,7 +386,7 @@ const TOOLS = [
   },
   {
     name: "snowsign_create_link_signing",
-    description: "1인 서명 템플릿으로 공유 가능한 링크서명을 생성합니다. 먼저 템플릿 상세의 can_create_link_signing이 true인지 확인하세요. 반환된 link_url을 사용자에게 공유합니다.",
+    description: "모든 멤버가 사용할 수 있는 1인 템플릿으로 전체 업무 관리 그룹의 링크서명을 생성합니다. can_create_link_signing을 확인하고 반환된 link_url만 공유합니다.",
     inputSchema: objectSchema({
       template_uuid: { type: "string", description: "템플릿 조회 응답의 template_id입니다." },
       name: { type: "string", minLength: 1, maxLength: 200, description: "링크서명 관리 이름입니다." },
@@ -461,7 +461,7 @@ const TOOLS = [
   },
   {
     name: "snowsign_create_embed_session",
-    description: "외부 서비스 화면에서 스노우싸인 계약 생성 iframe을 열 수 있도록 Hosted Embed Session을 발급합니다. 응답의 iframe_url만 브라우저에 전달하세요.",
+    description: "전체 업무 범위의 계약 생성 iframe 세션을 발급합니다. 템플릿은 모든 멤버가 사용할 수 있는 항목만 표시되며 결재가 필요한 즉시 발송은 오류로 중단됩니다. 응답의 iframe_url만 브라우저에 전달하세요.",
     inputSchema: objectSchema({
       allowed_origins: { type: "array", items: { type: "string" }, description: "iframe을 표시할 parent origin 목록입니다. 예: https://erp.example.com" },
       flows: { type: "array", items: { type: "string" }, description: "허용 흐름 목록입니다. 예: pdf_draft, pdf_send, template_draft, template_send, template_bulk, ai_draft, ai_send, all" },
@@ -683,7 +683,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "스노우싸인 MCP 도구로 일반 계약과 링크서명을 조회·운영하세요. 상태 변경 작업과 send_immediately=true 계약 생성은 실행 전 사용자 확인을 받으세요. PDF 기반 생성은 snowsign_upload_pdf 또는 snowsign_create_upload_session으로 document_upload_id를 준비한 뒤 snowsign_create_contract_from_pdf를 사용하세요. 링크서명은 snowsign_get_template에서 can_create_link_signing=true인 템플릿을 확인하고 생성하며, 결과의 link_url만 공유하세요. 일반 계약 목록에는 링크서명 계약이 포함되지 않으므로 완료 건은 snowsign_list_link_signing_contracts로 조회합니다. close는 되돌릴 수 없습니다. 이메일 전달 상태 요청에는 계약의 email_issue와 참여자 email_delivery를 확인하세요.",
+            text: "스노우싸인 MCP 도구로 일반 계약과 링크서명을 조회·운영하세요. API Key는 조직 자격증명이며 생성 리소스는 전체 업무에 속하고 템플릿은 모든 멤버가 사용할 수 있는 항목만 사용합니다. 상태 변경 작업과 send_immediately=true 계약 생성은 실행 전 사용자 확인을 받으세요. APPROVAL_REQUIRED이면 자동 상신하지 말고 내부 앱에서 결재가 필요하다고 안내하세요. 계약 결과에서는 responsible_permission_group과 approval_status를 확인하세요. PDF 기반 생성은 document_upload_id를 준비한 뒤 실행하고, 링크서명 결과에서는 link_url만 공유하세요. 일반 계약 목록에는 링크서명 계약이 포함되지 않습니다.",
           },
         }],
       };
@@ -696,7 +696,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "snowsign_get_api_reference_section 도구로 필요한 API 섹션을 확인한 뒤 스노우싸인 Public API 연동 코드를 작성하세요. 외부 PDF 연동은 POST /v1/uploads로 upload_id를 만들고 PDF를 업로드한 뒤 POST /v1/contracts 또는 POST /v1/templates의 document_upload_id로 전달합니다. signature_fields는 PDF.js getViewport({ scale: 1 }) 기준 pixel 좌표를 씁니다. 링크서명은 can_create_link_signing=true인 1인 템플릿만 사용하고, 일반 계약 목록과 링크별 완료 계약 조회를 분리합니다. 템플릿 기반 계약 생성 플로우에서는 GET /v1/templates/{id} 응답의 signers[].security_method와 signers[].locale을 기준으로 참여자 정책을 구성합니다. 이메일 전달 실패·반송·수신거부는 Webhook 이벤트가 아니므로 계약 목록·상세·상태 API로 확인합니다.",
+            text: "snowsign_get_api_reference_section 도구로 필요한 API 섹션을 확인한 뒤 연동 코드를 작성하세요. API Key는 조직 자격증명이며 생성 리소스는 관리 그룹 입력 없이 전체 업무에 속합니다. 템플릿은 모든 멤버가 사용할 수 있는 항목만 조회·사용하고, 결재가 필요한 발송은 APPROVAL_REQUIRED로 중단됩니다. 외부 PDF는 업로드 후 document_upload_id로 전달하고 signature_fields는 PDF.js scale 1 좌표를 씁니다. 템플릿 계약은 역할별 보안 정책과 언어를 확인하며, 계약 응답의 responsible_permission_group과 approval_status를 반영하세요. 링크서명 완료 계약은 일반 계약 목록과 분리해 조회합니다.",
           },
         }],
       };
@@ -709,7 +709,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "snowsign_get_hosted_embed_guide_section 도구로 필요한 Hosted Embed 섹션을 확인하세요. 외부 서버는 snowsign_create_embed_session 또는 POST /v1/embed-sessions로 flows와 allowed_origins를 전달해 iframe_url을 발급하고, 브라우저에는 API Key 없이 iframe_url만 전달합니다. iframe 내부 exchange API는 직접 호출하지 않습니다.",
+            text: "snowsign_get_hosted_embed_guide_section 도구로 필요한 Hosted Embed 섹션을 확인하세요. 외부 서버가 flows와 allowed_origins로 iframe_url을 발급하고 브라우저에는 API Key 없이 iframe_url만 전달합니다. iframe은 전체 업무 범위에서 동작하고 모든 멤버가 사용할 수 있는 템플릿만 표시하며, 결재가 필요한 즉시 발송은 오류로 중단됩니다. iframe 내부 exchange API는 직접 호출하지 않습니다.",
           },
         }],
       };
