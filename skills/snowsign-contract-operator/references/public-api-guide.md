@@ -31,7 +31,7 @@
   - [링크서명 조회 및 관리](#링크서명-조회-및-관리)
   - [완료 계약 조회](#완료-계약-조회)
 - [에러 처리](#에러-처리)
-- [Rate Limiting](#rate-limiting)
+- [업로드 세션 제한](#업로드-세션-제한)
 - [샘플 코드](#샘플-코드)
 - [부록](#부록)
 
@@ -133,6 +133,12 @@ Hosted Embed는 외부 ERP/그룹웨어 화면 안의 iframe에서 스노우싸�
 - 템플릿 대량 발송 spreadsheet UI
 - AI 문서 작성 후 PDF 계약 생성/즉시 발송
 
+## 관리 그룹과 결재
+
+API Key는 발급자 개인 권한이 아닌 조직 자격증명입니다. API로 만든 계약·링크서명·템플릿은 `전체 업무` 범위에 속하며, 템플릿 조회·사용에는 모든 멤버가 사용할 수 있는 템플릿만 포함됩니다.
+
+결재가 필요하면 API는 자동 상신하지 않고 에러를 반환합니다.
+
 기본 흐름:
 
 1. 외부 서버가 `POST /v1/embed-sessions`를 `X-API-Key`로 호출합니다.
@@ -200,6 +206,15 @@ flows:
 3. ERP 서버가 `document_upload_id`와 필드 위치 정보를 계약/템플릿 생성 API에 전달합니다.
 4. 스노우싸인이 업로드된 PDF를 최종 검증한 뒤 계약서 또는 템플릿을 생성합니다.
 
+**계약 응답 공통 필드**
+
+| 필드 | 포함 응답 | 설명 |
+|------|-----------|------|
+| `responsible_permission_group` | 생성, 목록, 상세 | 계약의 관리 그룹 `{ uuid, name, path }` |
+| `approval_status` | 생성, 목록, 상세, 상태 | 최신 결재 상태. 결재 요청이 없으면 `null` |
+| `link_signing` | 상세, 상태 | 링크서명으로 생성된 계약에만 `{ id, name }` 포함 |
+| `participants[].email_delivery.failure_reason` | 상세 | SMTP 원문과 수신자 주소를 제외한 표준 전달 실패 사유 |
+
 ### 계약서 목록 조회
 
 `GET /v1/contracts`
@@ -222,6 +237,8 @@ flows:
       "contract_id": "uuid-string",
       "title": "업무 위탁 계약서",
       "status": "in_progress",
+      "approval_status": null,
+      "responsible_permission_group": { "uuid": "permission-group-uuid", "name": "전체 업무", "path": ["전체 업무"] },
       "email_issue": true,
       "email_issue_count": 1,
       "created_at": "2025-01-06T10:00:00Z",
@@ -254,6 +271,8 @@ flows:
     "title": "업무 위탁 계약서",
     "description": "2025년 프로젝트 관련 업무 위탁 계약",
     "status": "in_progress",
+    "approval_status": null,
+    "responsible_permission_group": { "uuid": "permission-group-uuid", "name": "전체 업무", "path": ["전체 업무"] },
     "email_issue": true,
     "email_issue_count": 1,
     "signing_order": "sequential",
@@ -314,10 +333,6 @@ flows:
 }
 ```
 
-`failure_reason`은 SMTP 진단 원문이나 수신자 주소를 노출하지 않고 표준 상태 코드로 정규화한 사용자용 메시지입니다.
-
-링크서명으로 생성된 계약에는 `link_signing: { "id": "...", "name": "..." }`이 추가됩니다. 일반 계약에는 이 키가 없습니다.
-
 ---
 
 ### 계약서 상태 조회
@@ -332,6 +347,7 @@ flows:
   "data": {
     "contract_id": "uuid-string",
     "status": "in_progress",
+    "approval_status": null,
     "email_issue": true,
     "email_issue_count": 1,
     "participants_status": {
@@ -342,8 +358,6 @@ flows:
   }
 }
 ```
-
-링크서명으로 생성된 계약의 상태 응답에도 같은 `link_signing` 객체가 추가됩니다.
 
 ---
 
@@ -405,7 +419,9 @@ flows:
   "data": {
     "contract_id": "uuid-string",
     "title": "홍길동 근로계약서",
-    "status": "draft"
+    "status": "draft",
+    "approval_status": null,
+    "responsible_permission_group": { "uuid": "permission-group-uuid", "name": "전체 업무", "path": ["전체 업무"] }
   },
   "message": "계약서가 생성되었습니다."
 }
@@ -489,14 +505,12 @@ flows:
 | title | string | Y | 계약서 제목 |
 | document_upload_id | string | Y | 업로드 세션 ID |
 | send_immediately | boolean | N | true이면 계약 생성 후 즉시 발송. 기본값 false |
-| participants | array | Y | 참여자 목록 |
+| participants | array | Y | 참여자 목록. `locale`은 `ko` 또는 `en`, 기본값 `ko` |
 | signature_fields | array | Y | 입력칸/서명칸 위치 목록 |
 | variables | object | N | 변수 필드 값 |
 | integration | object | N | 외부 시스템 metadata |
 
 대부분의 경우 참여자는 `role` 하나로 필드와 매핑할 수 있습니다. 같은 역할명이 2명 이상이면 구분이 모호하므로 `key`와 `role_name`을 명시하세요.
-
-`participants[].locale`은 이메일과 서명 화면 언어이며 `ko` 또는 `en`을 사용합니다. 생략하면 `ko`입니다.
 
 `signature_fields` 좌표는 PDF.js `getViewport({ scale: 1 })` 기준 pixel 좌표입니다. 원점은 페이지 좌상단이며, `page_number`는 1부터 시작합니다.
 
@@ -585,6 +599,8 @@ flows:
     "contract_id": "uuid-string",
     "title": "외주 계약서 - 홍길동",
     "status": "pending",
+    "approval_status": null,
+    "responsible_permission_group": { "uuid": "permission-group-uuid", "name": "전체 업무", "path": ["전체 업무"] },
     "sent_at": "2026-06-11T03:20:00Z"
   }
 }
@@ -810,8 +826,10 @@ flows:
 | signing_order | string | N | `parallel` 또는 `sequential` |
 | deadline_days | integer | N | 기본 마감 기한 |
 | signers | array | Y | 역할 목록 |
-| signature_fields | array | N | 입력칸/서명칸 위치 목록 |
+| signature_fields | array | Y | 입력칸/서명칸 위치 목록 |
 | integration | object | N | 외부 시스템 metadata |
+
+템플릿은 모든 멤버가 사용할 수 있는 `전체 업무` 범위로 생성됩니다.
 
 대부분의 경우 템플릿 역할은 문자열 배열로 만들 수 있습니다. 역할 언어를 지정하려면 `{ "role": "...", "locale": "ko|en" }` 형식을 사용하며 기본값은 `ko`입니다. 같은 역할명이 중복되면 `key`와 `role_name`을 명시하세요.
 
@@ -994,15 +1012,20 @@ flows:
 }
 ```
 
-`signers[].security_method`는 템플릿 역할에 저장된 서명 보안 정책입니다. 값은 `email`, `password`, `easy_cert` 중 하나이며, 값이 없으면 `email`과 동일하게 처리됩니다.
-`signers[].mobile_alimtalk_enabled`는 템플릿 역할 기반 계약 생성 시 해당 참여자에게 모바일 알림톡을 보낼지 여부입니다.
-`signers[].locale`은 역할의 기본 이메일·서명 화면 언어입니다.
-`signature_fields`에는 `type: "variable"` 필드가 제외됩니다. 변수 목록은 `variables`에 동일 변수명 중복 제거 후 반환됩니다.
-`signature_fields[].is_required`는 `signature`/`stamp`/`name`이면 항상 true이고, `text`/`date`/`checkbox`이면 저장된 필수 여부입니다.
-`variables[].is_required`는 변수 값이 서명자 입력 대상이 아니므로 항상 false입니다.
-`signature_fields[].text_align`과 `variables[].text_align`은 `left`, `center`, `right`, `null` 중 하나입니다. 서명/체크박스처럼 텍스트 정렬 대상이 아닌 항목은 `null`입니다.
-`variables[].value_type`은 `text`, `checkbox`, `date` 중 하나입니다. 날짜 변수는 `date_precision`, `date_format_pattern`, `fill_background`, `text_align` 메타를 함께 사용합니다.
-`can_create_link_signing`은 PDF 파일이 있고 서명자 역할이 정확히 하나일 때만 `true`입니다.
+**상세 응답 필드**
+
+| 필드 | 설명 |
+|------|------|
+| `signers[].security_method` | `email`, `password`, `easy_cert`. 값이 없으면 `email` |
+| `signers[].mobile_alimtalk_enabled` | 역할 기반 계약의 알림톡 기본값 |
+| `signers[].locale` | 역할의 기본 이메일·서명 화면 언어 |
+| `signature_fields` | 변수 필드를 제외한 서명자 입력 필드 |
+| `signature_fields[].is_required` | 서명·인감·이름은 항상 `true`; 텍스트·날짜·체크박스는 저장값 |
+| `variables` | 동일한 변수명을 하나로 합친 변수 목록 |
+| `variables[].is_required` | 항상 `false` |
+| `signature_fields[].text_align`, `variables[].text_align` | `left`, `center`, `right`, `null`; 정렬 대상이 아니면 `null` |
+| `variables[].value_type` | `text`, `checkbox`, `date`. 날짜는 날짜 표시 메타 포함 |
+| `can_create_link_signing` | PDF가 있고 서명자 역할이 정확히 하나이면 `true` |
 
 ---
 
@@ -1030,6 +1053,12 @@ flows:
 ---
 
 ## 링크서명 API
+
+**링크서명 응답 공통 필드**
+
+| 필드 | 포함 응답 | 설명 |
+|------|-----------|------|
+| `responsible_permission_group` | 생성, 목록, 상세 | 링크와 생성 계약의 관리 그룹 `{ uuid, name }` |
 
 ### 링크서명 생성
 
@@ -1073,6 +1102,7 @@ flows:
       "template_id": "template-uuid",
       "name": "입사 동의서"
     },
+    "responsible_permission_group": { "uuid": "permission-group-uuid", "name": "전체 업무" },
     "link_url": "https://snowsign.jtsnowball.com/link-sign/...",
     "max_submissions": 100,
     "submission_count": 0,
@@ -1203,23 +1233,22 @@ PATCH 요청 필드는 모두 선택이며 전달한 값만 변경합니다.
 | INVALID_API_KEY | 유효하지 않은 API Key |
 | VALIDATION_ERROR | 요청 파라미터 검증 실패 |
 | QUOTA_EXCEEDED | 월간 사용량 한도 초과 |
-| UPLOAD_NOT_FOUND | 업로드 세션을 찾을 수 없음 |
-| UPLOAD_EXPIRED | 업로드 세션이 만료됨 |
-| PDF_REJECTED | 지원하지 않는 PDF |
+| UPLOAD_SESSION_NOT_FOUND | 업로드 세션을 찾을 수 없음 |
+| PDF_UPLOAD_REJECTED | 지원하지 않는 PDF |
 | CONTRACT_NOT_FOUND | 계약서를 찾을 수 없음 |
 | TEMPLATE_NOT_FOUND | 템플릿을 찾을 수 없음 |
 | LINK_SIGNING_NOT_FOUND | 링크서명을 찾을 수 없음 |
 | INVALID_LINK_SIGNING_STATUS | 지원하지 않는 목록 상태 |
 | INVALID_PUBLIC_LINK_SIGNING_REQUEST | 링크서명 요청 필드 또는 값 오류 |
 | INVALID_CONTRACT_STATUS | 현재 상태에서 수행할 수 없는 작업 |
+| APPROVAL_REQUIRED | 내부 앱에서 결재 후 발송해야 함 |
 
 ---
 
-## Rate Limiting
+## 업로드 세션 제한
 
 | 항목 | 제한 |
 |------|------|
-| API 호출 | 100 requests / minute (API Key 당) |
 | 사용 중인 업로드 세션 | API Key당 3개 |
 | 사용 중인 업로드 세션 선언 용량 | API Key당 150MB |
 | 업로드 세션 유효 시간 | 10분 |

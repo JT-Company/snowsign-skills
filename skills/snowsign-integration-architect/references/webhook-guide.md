@@ -100,7 +100,7 @@
 }
 ```
 
-`timestamp`와 `*_at` 시각 필드는 UTC 기준입니다.
+`timestamp`와 `*_at` 시각 필드는 UTC 기준입니다. 모든 이벤트의 `data`에는 `contract_id`, `title`, `responsible_permission_group: { uuid, name }`이 포함됩니다.
 
 링크서명 완료 시 `participant.signed` 다음 `contract.completed`가 발행됩니다. 두 이벤트의 `data`에만 다음 참조가 추가되며 링크 토큰과 URL은 포함되지 않습니다. 링크 생성·일시중지·재개·종료·만료 이벤트는 제공하지 않습니다.
 
@@ -313,7 +313,7 @@ function verifyWebhook(payloadBody, signature, secret) {
 
 ### 재시도
 
-자동 재시도는 제공되지 않습니다. 실패한 웹훅은 콘솔의 웹훅 로그에서 확인 후 **수동 재전송** 버튼으로 재시도할 수 있습니다.
+자동 재시도는 제공되지 않습니다. 실패한 웹훅은 콘솔의 웹훅 로그에서 확인 후 **수동 재전송**할 수 있습니다.
 
 ---
 
