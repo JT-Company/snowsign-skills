@@ -1,6 +1,6 @@
 ---
 name: snowsign-contract-operator
-description: 스노우싸인 일반 계약과 링크서명의 조회, 생성, 발송, 상태 관리, 완료 계약 확인, 다운로드를 Public API로 직접 처리하는 운영형 스킬.
+description: 스노우싸인 일반 계약과 링크서명의 조회, 생성, 즉시·예약 발송, 상태 관리, 완료 계약 확인, 다운로드를 Public API로 직접 처리하는 운영형 스킬.
 allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 ---
 
@@ -43,7 +43,7 @@ test -n "$SNOWSIGN_API_KEY"
 | 로컬 PDF 업로드 | `snowsign_upload_pdf` |
 | 업로드 PDF 진단 | `snowsign_run_upload_diagnostics` |
 | PDF로 계약 생성 | `snowsign_create_contract_from_pdf` |
-| 계약 발송 | `snowsign_send_contract` |
+| 계약 즉시 발송 및 예약 설정·변경·취소 | `snowsign_send_contract` |
 | 계약 취소 | `snowsign_cancel_contract` |
 | 리마인더 발송 | `snowsign_remind_contract` |
 | 계약 PDF 다운로드 | `snowsign_download_contract` |
@@ -77,7 +77,9 @@ test -n "$SNOWSIGN_API_KEY"
 | 이 PDF로 계약서 만들어줘 | `snowsign_upload_pdf`, `snowsign_create_contract_from_pdf` | `POST /uploads`, `POST /contracts` |
 | 이 PDF로 템플릿 만들어줘 | `snowsign_upload_pdf`, `snowsign_create_template_from_pdf` | `POST /uploads`, `POST /templates` |
 | 업로드 PDF 검사해줘 | `snowsign_run_upload_diagnostics` | `POST /uploads/{upload_id}/diagnostics` |
-| 계약서 보내줘 | `snowsign_send_contract` | `POST /contracts/{contract_id}/send` |
+| 계약서 지금 보내줘 | `snowsign_send_contract`에서 `scheduled_send_at` 생략 | `POST /contracts/{contract_id}/send` |
+| 계약서 발송을 예약/변경해줘 | `snowsign_send_contract`에 예약 시각 전달 | `POST /contracts/{contract_id}/send` |
+| 계약서 발송 예약을 취소해줘 | `snowsign_send_contract`에 `scheduled_send_at: null` 전달 | `POST /contracts/{contract_id}/send` |
 | 계약서 취소해줘 | `snowsign_cancel_contract` | `POST /contracts/{contract_id}/cancel` |
 | 리마인더 보내줘 | `snowsign_remind_contract` | `POST /contracts/{contract_id}/remind` |
 | 완료 PDF 받아줘 | `snowsign_download_contract` | `GET /contracts/{contract_id}/download` |
@@ -99,14 +101,16 @@ test -n "$SNOWSIGN_API_KEY"
 - PDF 계약 생성: PDF 파일 또는 `document_upload_id`, 참여자, `signature_fields` 좌표가 필요하다.
 - PDF 템플릿 생성: PDF 파일 또는 `document_upload_id`, 역할(`signers`), 필요한 `signature_fields` 좌표가 필요하다.
 - 서명자 언어 요청이 있으면 `locale`을 `ko` 또는 `en`으로 지정한다. PDF 계약은 생략 시 `ko`, 템플릿 계약은 역할 언어를 사용한다.
-- 발송, 취소, 리마인더: `contract_id`가 필요하다.
+- 즉시 발송, 예약 설정·변경·취소, 계약 취소, 리마인더: `contract_id`가 필요하다.
+- 예약 시각은 timezone을 포함하고 초·밀리초가 0인 ISO 8601 형식이어야 하며, 현재보다 미래이고 계약 마감일보다 앞이어야 한다.
 - 다운로드: `contract_id`가 필요하고 계약 상태가 `completed`여야 한다.
 - 링크서명 생성: `template_uuid`, `name`, `max_submissions`가 필요하다. 먼저 템플릿 상세의 `can_create_link_signing`이 `true`인지 확인한다.
 - 링크서명 만료일은 UTC ISO 8601로 전달한다. 수정·상태 변경·완료 계약 조회에는 `link_signing_id`가 필요하다.
 
 다음 호출은 상태 변경 또는 사용량 차감이 있으므로 사용자가 명시적으로 요청했을 때만 실행한다.
 
-- 계약 발송: 월간 계약 사용량이 차감된다.
+- 계약 즉시 발송: 월간 계약 사용량이 차감된다.
+- 발송 예약 설정·변경·취소: 계약 상태가 바뀐다. 사용량은 예약 실행 시 차감된다.
 - 계약 취소: 계약 상태가 바뀐다.
 - 리마인더 발송: 참여자에게 이메일이 발송된다.
 - 템플릿 기반 계약 생성: 새 리소스가 생성된다.
@@ -174,7 +178,7 @@ curl -sS "$BASE_URL/contracts/{contract_id}" \
   -H "X-API-Key: $SNOWSIGN_API_KEY"
 ```
 
-결과 요약 시에는 보통 `contract_id`, `title`, `status`, `approval_status`, `responsible_permission_group`, `created_at`, `sent_at`, `completed_at`, 참여자 상태를 중심으로 답한다. `email_issue`가 true이면 `email_issue_count`와 참여자별 `email_delivery.unresolved_issue`를 함께 확인하고, 정규화된 `failure_reason`만 사용자에게 설명한다.
+결과 요약 시에는 보통 `contract_id`, `title`, `status`, `approval_status`, `responsible_permission_group`, `scheduled_send_at`, `schedule_failure_code`, `created_at`, `sent_at`, `completed_at`, 참여자 상태를 중심으로 답한다. `email_issue`가 true이면 `email_issue_count`와 참여자별 `email_delivery.unresolved_issue`를 함께 확인하고, 정규화된 `failure_reason`만 사용자에게 설명한다.
 
 ## 템플릿 계약 생성
 
@@ -192,6 +196,7 @@ curl -sS "$BASE_URL/templates/{template_id}" \
 - `variables` 키는 템플릿 변수 `name`과 정확히 일치해야 한다.
 - 필수 변수인데 기본값이 없고 사용자 값도 없으면 생성 전에 사용자에게 묻는다.
 - 변수는 PDF에 고정 텍스트로 렌더링되며 서명자가 수정할 수 없다.
+- 생성과 함께 예약하려면 `scheduled_send_at`과 필요 시 `message`를 전달한다.
 
 ```bash
 curl -sS -X POST "$BASE_URL/templates/{template_id}/create-contract" \
@@ -228,6 +233,7 @@ PDF 파일에서 바로 계약/템플릿을 만들 때는 먼저 업로드를 �
 - PDF 경고를 미리 보여줘야 할 때만 `snowsign_run_upload_diagnostics`를 호출한다.
 - 좌표는 PDF.js `getViewport({ scale: 1 })` 기준 pixel 좌표이며 `page_number`는 1부터 시작한다.
 - `send_immediately: true`는 생성 후 즉시 발송이므로 사용자 의도가 분명할 때만 실행한다.
+- 예약 생성에는 `scheduled_send_at`과 필요 시 `message`를 사용하며 `send_immediately: true`와 함께 전달하지 않는다.
 - PDF 계약 참여자의 `locale` 기본값은 `ko`다. PDF 템플릿 역할은 `signers[].locale`로 기본 언어를 지정한다.
 
 계약 생성 fallback:
@@ -252,9 +258,27 @@ curl -sS -X POST "$BASE_URL/contracts" \
   }'
 ```
 
-## 발송, 취소, 리마인더
+## 발송 예약, 즉시 발송, 계약 취소, 리마인더
 
-발송:
+예약 설정 또는 변경:
+
+```bash
+curl -sS -X POST "$BASE_URL/contracts/{contract_id}/send" \
+  -H "X-API-Key: $SNOWSIGN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "scheduled_send_at": "2026-09-04T10:30:00+09:00", "message": "계약서 검토 부탁드립니다." }'
+```
+
+즉시 발송은 `scheduled_send_at`을 생략하고, 예약 취소는 명시적으로 `null`을 전달한다.
+
+```bash
+curl -sS -X POST "$BASE_URL/contracts/{contract_id}/send" \
+  -H "X-API-Key: $SNOWSIGN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "scheduled_send_at": null }'
+```
+
+즉시 발송:
 
 ```bash
 curl -sS -X POST "$BASE_URL/contracts/{contract_id}/send" \
@@ -279,7 +303,7 @@ curl -sS -X POST "$BASE_URL/contracts/{contract_id}/remind" \
   -H "X-API-Key: $SNOWSIGN_API_KEY"
 ```
 
-실행 후에는 성공 여부, 현재 상태, 발송/취소 시각처럼 사용자가 확인해야 할 값만 요약한다.
+실행 후에는 성공 여부, 현재 상태, 예약·발송·취소 시각과 예약 실패 코드처럼 사용자가 확인해야 할 값만 요약한다.
 
 발송·리마인더 API 성공은 발송 요청이 접수됐다는 의미다. 사용자가 실제 전달이나 반송 여부를 물으면 계약 상세를 다시 조회해 참여자별 `email_delivery.status`를 확인한다. `failed`, `bounced`, `complained`는 문제 상태이며, 미해결 `complained` 참여자는 리마인더 대상에서 제외된다.
 

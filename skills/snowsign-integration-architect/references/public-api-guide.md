@@ -129,7 +129,7 @@ Hosted Embed는 외부 ERP/그룹웨어 화면 안의 iframe에서 스노우싸�
 
 지원 흐름:
 - PDF 업로드 계약 생성/즉시 발송
-- 템플릿 단건 계약 생성/발송
+- 템플릿 단건 계약 생성
 - 템플릿 대량 발송 spreadsheet UI
 - AI 문서 작성 후 PDF 계약 생성/즉시 발송
 
@@ -138,6 +138,8 @@ Hosted Embed는 외부 ERP/그룹웨어 화면 안의 iframe에서 스노우싸�
 API Key는 발급자 개인 권한이 아닌 조직 자격증명입니다. API로 만든 계약·링크서명·템플릿은 `전체 업무` 범위에 속하며, 템플릿 조회·사용에는 모든 멤버가 사용할 수 있는 템플릿만 포함됩니다.
 
 결재가 필요하면 API는 자동 상신하지 않고 에러를 반환합니다.
+
+회사 도장은 Public API로 직접 추가할 수 없으며, 도장이 배치된 템플릿을 스노우싸인에서 미리 준비해 쓸 수 있습니다.
 
 기본 흐름:
 
@@ -212,8 +214,12 @@ flows:
 |------|-----------|------|
 | `responsible_permission_group` | 생성, 목록, 상세 | 계약의 관리 그룹 `{ uuid, name, path }` |
 | `approval_status` | 생성, 목록, 상세, 상태 | 최신 결재 상태. 결재 요청이 없으면 `null` |
+| `scheduled_send_at` | 생성, 발송, 목록, 상세, 상태 | 예약 발송 시각. 예약되지 않았으면 `null` |
+| `schedule_failure_code` | 생성, 발송, 목록, 상세, 상태 | 예약 실행 실패 코드. 실패하지 않았으면 `null` |
 | `link_signing` | 상세, 상태 | 링크서명으로 생성된 계약에만 `{ id, name }` 포함 |
 | `participants[].email_delivery.failure_reason` | 상세 | SMTP 원문과 수신자 주소를 제외한 표준 전달 실패 사유 |
+
+예약 실행 실패 코드는 `approval_required`, `subscription_required`, `payment_past_due`, `quota_exceeded`, `authorization_failed`, `resource_invalid`, `system_error` 중 하나입니다.
 
 ### 계약서 목록 조회
 
@@ -225,7 +231,7 @@ flows:
 |---------|------|------|------|
 | page | integer | N | 페이지 번호 (기본값: 1) |
 | per_page | integer | N | 페이지당 항목 수 (기본값: 20, 최대: 100) |
-| status | string | N | 상태 필터 (draft, pending, in_progress, completed, cancelled, expired, rejected) |
+| status | string | N | 상태 필터 (draft, scheduled, pending, in_progress, completed, cancelled, expired, rejected) |
 
 **Response**
 
@@ -241,6 +247,8 @@ flows:
       "responsible_permission_group": { "uuid": "permission-group-uuid", "name": "전체 업무", "path": ["전체 업무"] },
       "email_issue": true,
       "email_issue_count": 1,
+      "scheduled_send_at": null,
+      "schedule_failure_code": null,
       "created_at": "2025-01-06T10:00:00Z",
       "sent_at": "2025-01-06T10:05:00Z",
       "completed_at": null
@@ -275,6 +283,8 @@ flows:
     "responsible_permission_group": { "uuid": "permission-group-uuid", "name": "전체 업무", "path": ["전체 업무"] },
     "email_issue": true,
     "email_issue_count": 1,
+    "scheduled_send_at": null,
+    "schedule_failure_code": null,
     "signing_order": "sequential",
     "participants": [
       {
@@ -350,6 +360,8 @@ flows:
     "approval_status": null,
     "email_issue": true,
     "email_issue_count": 1,
+    "scheduled_send_at": null,
+    "schedule_failure_code": null,
     "participants_status": {
       "total": 2,
       "signed": 1,
@@ -374,6 +386,8 @@ flows:
 | participants | array | Y | 참여자 목록 (역할 매핑) |
 | variables | object | N | 템플릿 변수 값. 텍스트 변수는 문자열, 날짜 변수는 ISO 날짜/연월 문자열, 체크박스 변수는 boolean |
 | signing_order | string | N | 서명 순서 (템플릿 기본값 사용 시 생략) |
+| scheduled_send_at | string | N | 예약 발송 시각. timezone을 포함한 ISO 8601 형식 |
+| message | string | N | 예약 발송 시 참여자에게 전달할 메시지 |
 
 **participants 항목**
 
@@ -407,7 +421,9 @@ flows:
     "계약시작일": "2025-02-01",
     "개인정보동의": true,
     "급여": "3,500,000원"
-  }
+  },
+  "scheduled_send_at": "2026-09-04T10:30:00+09:00",
+  "message": "계약서 검토 부탁드립니다."
 }
 ```
 
@@ -419,11 +435,13 @@ flows:
   "data": {
     "contract_id": "uuid-string",
     "title": "홍길동 근로계약서",
-    "status": "draft",
+    "status": "scheduled",
     "approval_status": null,
-    "responsible_permission_group": { "uuid": "permission-group-uuid", "name": "전체 업무", "path": ["전체 업무"] }
+    "responsible_permission_group": { "uuid": "permission-group-uuid", "name": "전체 업무", "path": ["전체 업무"] },
+    "scheduled_send_at": "2026-09-04T01:30:00",
+    "schedule_failure_code": null
   },
-  "message": "계약서가 생성되었습니다."
+  "message": "계약서 발송을 예약했습니다."
 }
 ```
 
@@ -496,7 +514,7 @@ flows:
 
 `POST /v1/contracts`
 
-업로드 PDF와 필드 위치 정보로 계약서를 생성합니다. `send_immediately=true`이면 생성 후 즉시 발송합니다.
+업로드 PDF와 필드 위치 정보로 계약서를 생성합니다. 즉시 발송하거나 예약하지 않으면 초안으로 생성됩니다.
 
 **Request Body 주요 필드**
 
@@ -505,6 +523,7 @@ flows:
 | title | string | Y | 계약서 제목 |
 | document_upload_id | string | Y | 업로드 세션 ID |
 | send_immediately | boolean | N | true이면 계약 생성 후 즉시 발송. 기본값 false |
+| scheduled_send_at | string | N | 예약 발송 시각. timezone을 포함한 ISO 8601 형식 |
 | participants | array | Y | 참여자 목록. `locale`은 `ko` 또는 `en`, 기본값 `ko` |
 | signature_fields | array | Y | 입력칸/서명칸 위치 목록 |
 | variables | object | N | 변수 필드 값 |
@@ -606,7 +625,7 @@ flows:
 }
 ```
 
-`send_immediately`를 생략하거나 `false`로 보내면 초안만 생성됩니다.
+`send_immediately=true`와 `scheduled_send_at`은 함께 지정할 수 없습니다. 둘 다 생략하면 초안으로 생성됩니다.
 
 ### 계약서 발송
 
@@ -619,6 +638,7 @@ flows:
 | 필드 | 타입 | 필수 | 설명 |
 |------|------|------|------|
 | message | string | N | 참여자에게 전달할 메시지 |
+| scheduled_send_at | string 또는 null | N | 값 지정 시 예약 또는 변경, `null`이면 예약 취소. 필드 생략 시 즉시 발송 |
 
 **Response**
 
@@ -627,12 +647,16 @@ flows:
   "success": true,
   "data": {
     "contract_id": "uuid-string",
-    "status": "pending",
-    "sent_at": "2025-01-06T10:05:00Z"
+    "status": "scheduled",
+    "scheduled_send_at": "2026-09-04T01:30:00",
+    "schedule_failure_code": null,
+    "sent_at": null
   },
-  "message": "계약서가 발송되었습니다."
+  "message": "계약서 발송을 예약했습니다."
 }
 ```
+
+즉시 발송하려면 `scheduled_send_at`을 생략하고, 예약을 취소하려면 명시적으로 `null`을 전달합니다. 예약 시각은 현재보다 뒤이고 마감일보다 앞이어야 합니다.
 
 ---
 
@@ -1339,6 +1363,7 @@ await fetch(`${BASE_URL}/contracts/${contractId}/send`, {
 | 상태 | 설명 |
 |------|------|
 | draft | 초안 - 아직 발송되지 않음 |
+| scheduled | 발송 예약 - 예약 시각을 기다리는 중 |
 | pending | 대기 중 - 발송됨, 서명 대기 |
 | in_progress | 진행 중 - 일부 참여자 서명 완료 |
 | completed | 완료 - 모든 참여자 서명 완료 |
