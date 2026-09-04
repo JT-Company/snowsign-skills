@@ -1,18 +1,15 @@
 ---
 name: snowsign-integration-architect
-description: 스노우싸인 일반 계약, 링크서명, Hosted Embed, 웹훅을 ERP와 자체 서비스에 연동하도록 설계하고 구현 계획을 작성하는 개발/설계형 스킬.
-allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
+description: 스노우싸인 Public API, Hosted Embed, 웹훅 연동을 분석·설계하고 승인 후 구현하는 개발 스킬. 실제 계약 조회·생성·발송 업무를 대신 수행할 때는 사용하지 않음.
 ---
 
 # 스노우싸인 API & Webhook Integration Architect
 
 스노우싸인 Public API, Hosted Embed, 웹훅을 기존 ERP, 자체 서비스, 백오피스, 배치/자동화 스크립트에 연동할 때 사용한다. 이 스킬의 핵심은 구현이 아니라 설계와 승인 게이트다.
 
-## 절대 규칙
+## 설계·구현 경계
 
-이 스킬이 활성화된 동안 기본 모드는 설계 전용이다. 다른 지침보다 이 절대 규칙을 우선한다.
-- 사용자가 "구현해줘", "만들어줘", "연동해줘", "바로 작업해줘"라고 말해도 별도 다음 응답에서 명시적으로 승인한 뒤에만 구현 단계로 넘어간다. 최초 요청의 "구현해줘"는 승인으로 간주하지 않으며, 절대 구현하지 않는다.
-- 매 단계가 완료될 때마다 반드시 이 스킬 문서를 명시적으로 다시 읽고 검토하여 현재 상태와 다음에 해야 할 프로세스를 잃지 않도록 한다.
+기본 모드는 설계 전용이다. 최초 요청에 구현이 포함되어 있어도 설계안을 먼저 제시하고, 사용자가 다음 응답에서 명시적으로 승인한 뒤 구현한다.
 
 ## 응답 시작 형식
 
@@ -161,15 +158,16 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 - 클라이언트 브라우저에서 스노우싸인 Public API를 직접 호출하지 않는다.
 - 계약 생성 전체 UI를 외부 서비스 안에 넣어야 하면 브라우저 직접 API 호출 대신 Hosted Embed를 우선 검토한다.
 - Hosted Embed는 `allowed_origins`, `capabilities`, `external_system`, `external_id` 또는 `reference_id` 설계를 반드시 포함한다.
+- 단기 `iframe_url`은 장기간 저장하거나 제3자와 공유하지 않고 만료 시 새 세션을 발급한다. `postMessage`는 `event.origin`과 `message.source`를 모두 검증한다.
 - 같은 업무를 하나만 열게 할지, 새로고침/재시도마다 새 iframe을 허용할지에 따라 `external_id`/`reference_id` 정책을 정한다.
-- 템플릿 계약은 `GET /templates/{template_id}`로 역할명, 역할별 `locale`, 변수를 먼저 확인한다.
+- 템플릿 계약은 `GET /templates/{template_id}`로 역할명, 역할별 `locale`, 변수와 보안 수단을 먼저 확인한다. 비밀번호 역할에는 `security: { method: "password", value: "..." }`, 간편인증 역할에는 휴대전화번호가 필요하다.
 - 링크서명은 템플릿 응답의 `can_create_link_signing`이 `true`인 1인 서명 템플릿만 사용하고, 응답의 `template_id`를 `template_uuid`로 전달한다.
 - 일반 계약 목록에는 링크서명 계약이 포함되지 않으므로 링크별 완료 계약 API를 별도 동기화하고, 반환된 `contract_id`로 상세·상태·문서를 조회한다.
 - 링크서명 생성·수정·일시중지·재개·종료 권한과 확인 UX를 설계한다. 종료는 되돌릴 수 없음을 명시한다.
 - PDF 기반 생성은 `POST /uploads`로 업로드 세션을 만들고 업로드 완료 후 `document_upload_id`를 계약/템플릿 생성 API에 전달한다.
 - PDF 좌표는 PDF.js `getViewport({ scale: 1 })` 기준 pixel 좌표로 설계한다.
 - `participants[].role`은 템플릿의 역할명과 정확히 일치해야 한다.
-- 자체 채널로 링크를 전달하면 `dispatch_mode: external`을 사용하고 생성 응답 또는 계약 상세의 `participants[].signing_url`을 저장한다. 별도 링크 조회 API는 없다.
+- 자체 채널로 링크를 전달하면 `dispatch_mode: external`을 사용하고 생성 응답 또는 계약 상세의 참여자별 `signing_url`과 `expires_at`을 사용한다. 별도 링크 조회 API는 없으며 각 링크는 해당 참여자에게만 전달하는 민감정보다. 전화번호 확인은 연락처에 따라 자동 선택하므로 `security.method: phone`을 요청하지 않는다.
 - external 계약에는 예약·플랫폼 발송·리마인더를 설계하지 않는다.
 - 서명자 언어는 `locale: ko|en`으로 매핑한다. PDF 계약의 기본값은 `ko`이며 템플릿 계약은 생략 시 역할 `locale`을 상속한다.
 - 순차 서명은 참여자별 `order`를 명확히 저장한다.
@@ -178,16 +176,16 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 - 계약 활성화는 사용량 차감과 참여자 접근 허용이 발생하므로 승인/확인 UX를 둔다.
 - 계약 이메일 전달 상태는 목록·상태의 `email_issue`와 상세의 `participants[].email_delivery`로 조회한다. 발송 API 성공을 실제 전달 완료로 간주하지 않는다.
 - `completed` 이전에는 PDF 다운로드를 전제로 하지 않는다.
-- 외부 API 실패는 사용자 메시지, 재시도 가능성, 내부 상태를 분리해 처리한다.
+- 생성·발송 응답이 불명확하면 조회로 처리 여부를 확인한 뒤 재시도한다. 외부 API 실패는 사용자 메시지, 재시도 가능성, 내부 상태를 분리해 처리한다.
 
 ## Webhook 설계 체크리스트
 
-- raw body로 HMAC-SHA256 서명을 검증한다.
+- raw body로 HMAC-SHA256 서명을 계산하고 상수 시간 비교로 검증한다.
 - 검증 실패는 401로 응답하고 처리하지 않는다.
-- 5초 내 2xx 응답 후 큐/잡으로 비동기 처리한다.
+- 검증한 이벤트를 DB나 내구성 있는 큐에 적재한 뒤 5초 내 2xx로 응답하고 비즈니스 처리는 비동기로 수행한다.
 - payload의 `id`로 idempotency를 보장한다. 자동·수동 재전송에도 같은 ID가 유지된다.
 - 계약 이벤트의 `dispatch_mode`와 참여자의 `participant_id`, `email`, `phone`, `signing_order`, `security_method`를 내부 모델에 매핑한다.
-- `contract.completed`, `contract.cancelled`, `contract.expired`, `participant.declined`는 내부 상태 전이를 정의한다.
+- 구독하는 `contract.sent`, `contract.viewed`, `participant.signed`, `participant.declined`, `contract.completed`, `contract.cancelled`, `contract.expired`의 내부 상태 전이를 정의한다.
 - 링크서명 완료는 `participant.signed`와 `contract.completed`의 `data.link_signing`으로 식별한다. 링크 토큰·URL과 링크 lifecycle 이벤트는 제공되지 않는다.
 - 이메일 전달 실패·반송·수신거부는 Webhook 이벤트가 아니므로 계약 목록·상세·상태 API 조회로 별도 동기화한다.
 - 이벤트 순서 역전과 중복 수신을 고려한다.

@@ -1,360 +1,89 @@
 ---
 name: snowsign-contract-operator
-description: 스노우싸인 일반·외부 전달 계약과 링크서명의 조회, 생성, 발송, 상태 관리, 완료 계약 확인, 다운로드를 Public API로 직접 처리하는 운영형 스킬.
+description: 스노우싸인 Public API로 일반·외부 전달 계약과 링크서명을 직접 조회·생성·발송·관리·다운로드하는 운영 스킬. 사용자가 실제 계약 업무 실행을 요청할 때 사용하며, 연동 구조 설계만 필요한 경우에는 사용하지 않음.
 allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 ---
 
 # 스노우싸인 Contract Operator
 
-사용자의 자연어 요청을 스노우싸인 Public API 호출로 수행한다. 이 skill은 API 개발 가이드가 아니라, 에이전트가 사용자를 대신해 계약 업무를 처리하기 위한 실행 절차다.
-
-상세 엔드포인트, 요청 필드, 응답 예시는 필요할 때 [references/public-api-guide.md](references/public-api-guide.md)를 확인한다.
-
-## 기본 설정
-
-- Base URL: `https://api-snowsign.jtsnowball.com/public/v1`
-- 인증 헤더: `X-API-Key`
-- API Key는 `SNOWSIGN_API_KEY` 환경변수에서 읽는 것을 기본으로 한다.
-- API Key는 조직 자격증명이다. 생성 리소스는 `전체 업무`에 속하고 모든 멤버용 템플릿만 조회·사용한다.
-- 실제 API Key를 답변, 로그, 예시 코드에 노출하지 않는다.
-- 스노우싸인 MCP 도구가 사용 가능하면 MCP를 우선 사용한다.
-- MCP 도구가 없거나 실패했을 때만 `curl`을 fallback으로 사용한다.
-- `curl` fallback 실행 전 `SNOWSIGN_API_KEY`가 없으면 사용자에게 키 설정을 요청하고 API 호출을 멈춘다.
-
-```bash
-BASE_URL="https://api-snowsign.jtsnowball.com/public/v1"
-test -n "$SNOWSIGN_API_KEY"
-```
-
-## 실행 도구 우선순위
-
-1. 스노우싸인 MCP 도구가 있으면 MCP를 우선 사용한다.
-2. MCP 도구가 없거나 MCP 호출이 실패하면 `SNOWSIGN_API_KEY` 환경변수와 `curl`로 직접 호출한다.
-3. 실제 API Key, `X-API-Key` 헤더 값, 다운로드 인증 정보를 답변이나 로그에 노출하지 않는다.
-
-주요 MCP 도구:
-
-| 작업 | MCP 도구 |
-|---|---|
-| 계약 목록 조회 | `snowsign_list_contracts` |
-| 계약 상세·외부 전달 링크 조회 | `snowsign_get_contract` |
-| 계약 상태 조회 | `snowsign_get_contract_status` |
-| PDF 업로드 세션 생성 | `snowsign_create_upload_session` |
-| 로컬 PDF 업로드 | `snowsign_upload_pdf` |
-| 업로드 PDF 진단 | `snowsign_run_upload_diagnostics` |
-| PDF로 계약 생성 | `snowsign_create_contract_from_pdf` |
-| 계약 즉시 발송 및 예약 설정·변경·취소 | `snowsign_send_contract` |
-| 계약 취소 | `snowsign_cancel_contract` |
-| 리마인더 발송 | `snowsign_remind_contract` |
-| 계약 PDF 다운로드 | `snowsign_download_contract` |
-| 감사추적인증서 다운로드 | `snowsign_download_audit_certificate` |
-| 여러 계약 PDF 일괄 다운로드 | `snowsign_bulk_download_contracts` |
-| 여러 감사추적인증서 일괄 다운로드 | `snowsign_bulk_download_audit_certificates` |
-| 템플릿 목록 조회 | `snowsign_list_templates` |
-| 템플릿 상세 조회 | `snowsign_get_template` |
-| 템플릿 파일 다운로드 | `snowsign_download_template` |
-| PDF로 템플릿 생성 | `snowsign_create_template_from_pdf` |
-| 템플릿으로 계약 생성 | `snowsign_create_contract_from_template` |
-| 링크서명 생성 | `snowsign_create_link_signing` |
-| 링크서명 목록/상세 조회 | `snowsign_list_link_signings`, `snowsign_get_link_signing` |
-| 링크서명 설정 수정 | `snowsign_update_link_signing` |
-| 링크서명 일시중지/재개/종료 | `snowsign_pause_link_signing`, `snowsign_resume_link_signing`, `snowsign_close_link_signing` |
-| 링크서명 완료 계약 조회 | `snowsign_list_link_signing_contracts` |
-| API 문서 섹션 확인 | `snowsign_get_api_reference_section` |
-
-## 의도 매핑
-
-사용자 요청을 다음 작업 중 하나로 분류한다.
-
-| 사용자 의도 | 우선 도구 | fallback API |
-|---|---|
-| 계약서 목록 보여줘, 완료된 계약 찾아줘 | `snowsign_list_contracts` | `GET /contracts` |
-| 특정 계약 상태 확인 | `snowsign_get_contract_status` | `GET /contracts/{contract_id}/status` |
-| 특정 계약 상세 확인 | `snowsign_get_contract` | `GET /contracts/{contract_id}` |
-| 계약 이메일 전달/반송 확인 | `snowsign_get_contract`, `snowsign_get_contract_status` | `GET /contracts/{contract_id}`, `GET /contracts/{contract_id}/status` |
-| 템플릿 목록/상세 확인 | `snowsign_list_templates`, `snowsign_get_template` | `GET /templates`, `GET /templates/{template_id}` |
-| 새 계약서 만들어줘, 템플릿으로 계약서 만들어줘 | `snowsign_create_contract_from_template` | `POST /templates/{template_id}/create-contract` |
-| 계약 링크를 우리 문자·알림톡으로 보낼 수 있게 만들어줘 | 계약 생성 도구에 `dispatch_mode: external` 전달 | 해당 계약 생성 API |
-| 이 PDF로 계약서 만들어줘 | `snowsign_upload_pdf`, `snowsign_create_contract_from_pdf` | `POST /uploads`, `POST /contracts` |
-| 이 PDF로 템플릿 만들어줘 | `snowsign_upload_pdf`, `snowsign_create_template_from_pdf` | `POST /uploads`, `POST /templates` |
-| 업로드 PDF 검사해줘 | `snowsign_run_upload_diagnostics` | `POST /uploads/{upload_id}/diagnostics` |
-| 계약서 지금 보내줘 | `snowsign_send_contract`에서 `scheduled_send_at` 생략 | `POST /contracts/{contract_id}/send` |
-| 계약서 발송을 예약/변경해줘 | `snowsign_send_contract`에 예약 시각 전달 | `POST /contracts/{contract_id}/send` |
-| 계약서 발송 예약을 취소해줘 | `snowsign_send_contract`에 `scheduled_send_at: null` 전달 | `POST /contracts/{contract_id}/send` |
-| 계약서 취소해줘 | `snowsign_cancel_contract` | `POST /contracts/{contract_id}/cancel` |
-| 리마인더 보내줘 | `snowsign_remind_contract` | `POST /contracts/{contract_id}/remind` |
-| 완료 PDF 받아줘 | `snowsign_download_contract` | `GET /contracts/{contract_id}/download` |
-| 감사추적인증서 받아줘 | `snowsign_download_audit_certificate` | `GET /contracts/{contract_id}/audit-certificate` |
-| 여러 계약서 다운로드 링크 만들어줘 | `snowsign_bulk_download_contracts` | `POST /contracts/bulk-download` |
-| 여러 감사추적인증서 링크 만들어줘 | `snowsign_bulk_download_audit_certificates` | `POST /contracts/bulk-audit-certificates` |
-| 링크서명 만들어줘 | `snowsign_create_link_signing` | `POST /link-signings` |
-| 링크서명 목록/상세 보여줘 | `snowsign_list_link_signings`, `snowsign_get_link_signing` | `GET /link-signings`, `GET /link-signings/{id}` |
-| 링크서명 설정을 바꿔줘 | `snowsign_update_link_signing` | `PATCH /link-signings/{id}` |
-| 링크서명 일시중지/재개/종료해줘 | 해당 상태 변경 도구 | `POST /link-signings/{id}/{action}` |
-| 이 링크의 완료 계약 보여줘 | `snowsign_list_link_signing_contracts` | `GET /link-signings/{id}/contracts` |
-
-## 실행 전 확인 규칙
-
-정보가 부족하면 API를 추측해서 호출하지 말고 필요한 항목만 짧게 묻는다.
-
-- 순차 서명: `signing_order: sequential`이면 참여자별 `order`가 필요하다.
-- 템플릿 계약 생성: `template_id`, 참여자별 템플릿 역할명(`role`), 필수 변수 값이 필요하다.
-- PDF 계약 생성: PDF 파일 또는 `document_upload_id`, 참여자, `signature_fields` 좌표가 필요하다.
-- PDF 템플릿 생성: PDF 파일 또는 `document_upload_id`, 역할(`signers`), 필요한 `signature_fields` 좌표가 필요하다.
-- 서명자 언어 요청이 있으면 `locale`을 `ko` 또는 `en`으로 지정한다. PDF 계약은 생략 시 `ko`, 템플릿 계약은 역할 언어를 사용한다.
-- 스노우싸인이 발송하는 `platform` 계약은 참여자 이메일이 필요하다.
-- 자체 채널로 전달하는 `external` 계약은 참여자마다 이메일 또는 국내 휴대전화번호가 필요하다. `security.method: phone`은 직접 전달하지 않는다. 생성 즉시 활성화되므로 `send_immediately`와 `scheduled_send_at`도 전달하지 않는다.
-- 즉시 발송, 예약 설정·변경·취소, 계약 취소, 리마인더: `contract_id`가 필요하다.
-- 예약 시각은 timezone을 포함하고 초·밀리초가 0인 ISO 8601 형식이어야 하며, 현재보다 미래이고 계약 마감일보다 앞이어야 한다.
-- 다운로드: `contract_id`가 필요하고 계약 상태가 `completed`여야 한다.
-- 링크서명 생성: `template_uuid`, `name`, `max_submissions`가 필요하다. 먼저 템플릿 상세의 `can_create_link_signing`이 `true`인지 확인한다.
-- 링크서명 만료일은 UTC ISO 8601로 전달한다. 수정·상태 변경·완료 계약 조회에는 `link_signing_id`가 필요하다.
-
-다음 호출은 상태 변경 또는 사용량 차감이 있으므로 사용자가 명시적으로 요청했을 때만 실행한다.
-
-- 계약 즉시 발송: 월간 계약 사용량이 차감된다.
-- 발송 예약 설정·변경·취소: 계약 상태가 바뀐다. 사용량은 예약 실행 시 차감된다.
-- 계약 취소: 계약 상태가 바뀐다.
-- 리마인더 발송: platform 계약 참여자에게 이메일이 발송된다.
-- 템플릿 기반 계약 생성: 새 리소스가 생성된다.
-- PDF 기반 계약/템플릿 생성: 새 리소스가 생성된다.
-- PDF 계약 생성에서 `send_immediately: true`이면 생성과 발송이 함께 수행되고 월간 계약 사용량이 차감된다.
-- `external` 계약 생성은 즉시 활성화되고 월간 계약 사용량이 차감된다.
-- 링크서명 생성·설정 수정·일시중지·재개·종료: 리소스나 외부 서명 가능 상태가 바뀐다. 종료는 되돌릴 수 없다.
-
-사용자 요청이 모호하면 실행 전 확인한다. 예: "이 계약 처리해줘"는 조회인지 발송인지 물어본다.
-
-## 표준 실행 흐름
-
-1. 의도를 분류한다.
-2. 필요한 식별자와 필수 입력값이 있는지 확인한다.
-3. 스키마가 헷갈리면 `references/public-api-guide.md`에서 해당 API 섹션을 읽는다.
-4. 스노우싸인 MCP 도구가 있으면 MCP로 API를 호출한다.
-5. MCP 도구가 없거나 실패하면 `curl` fallback으로 API를 호출한다.
-6. 응답의 `success`를 확인한다.
-7. 성공이면 사용자가 필요한 결과만 요약한다.
-8. 실패이면 `error.code`와 `error.message`를 기준으로 원인과 다음 조치를 말한다.
-
-## MCP 실행 규칙
-
-MCP 도구를 사용할 때도 상태 변경 작업은 사용자가 명시적으로 요청했을 때만 실행한다. 특히 다음 도구는 실행 전 요청 의도가 분명해야 한다.
-
-- `snowsign_create_contract_from_template`
-- `snowsign_create_contract_from_pdf`
-- `snowsign_create_template_from_pdf`
-- `snowsign_send_contract`
-- `snowsign_cancel_contract`
-- `snowsign_remind_contract`
-- `snowsign_bulk_download_contracts`
-- `snowsign_bulk_download_audit_certificates`
-- `snowsign_create_link_signing`
-- `snowsign_update_link_signing`
-- `snowsign_pause_link_signing`
-- `snowsign_resume_link_signing`
-- `snowsign_close_link_signing`
-
-MCP 도구의 응답도 원본 전체를 그대로 보여주지 말고, 사용자에게 필요한 필드만 요약한다.
-
-## curl fallback
-
-아래 예시는 스노우싸인 MCP 도구를 사용할 수 없을 때만 사용한다.
-
-## 조회 작업
-
-계약 목록:
-
-```bash
-curl -sS "$BASE_URL/contracts?page=1&per_page=20" \
-  -H "X-API-Key: $SNOWSIGN_API_KEY"
-```
-
-상태별 목록:
-
-```bash
-curl -sS "$BASE_URL/contracts?status=completed&page=1&per_page=20" \
-  -H "X-API-Key: $SNOWSIGN_API_KEY"
-```
-
-계약 상세:
-
-```bash
-curl -sS "$BASE_URL/contracts/{contract_id}" \
-  -H "X-API-Key: $SNOWSIGN_API_KEY"
-```
-
-결과 요약 시에는 보통 `contract_id`, `title`, `status`, `dispatch_mode`, `approval_status`, `responsible_permission_group`, `scheduled_send_at`, `schedule_failure_code`, `created_at`, `sent_at`, `completed_at`, 참여자 상태를 중심으로 답한다. `external` 계약이면 참여자별 `signing_url`을 확인하고, `platform` 계약의 `email_issue`가 true이면 `email_issue_count`와 참여자별 `email_delivery.unresolved_issue`를 함께 확인한다.
-
-## 템플릿 계약 생성
-
-템플릿 기반 요청은 먼저 템플릿 상세를 조회해 역할명과 필수 변수를 확인한다.
-
-```bash
-curl -sS "$BASE_URL/templates/{template_id}" \
-  -H "X-API-Key: $SNOWSIGN_API_KEY"
-```
-
-규칙:
-
-- `participants[].role`은 템플릿의 `signers[].role_name`과 정확히 일치해야 한다.
-- `participants[].locale`을 생략하면 `signers[].locale`을 상속한다. 사용자가 언어를 지정하면 참여자 값으로 override한다.
-- `variables` 키는 템플릿 변수 `name`과 정확히 일치해야 한다.
-- 필수 변수인데 기본값이 없고 사용자 값도 없으면 생성 전에 사용자에게 묻는다.
-- 변수는 PDF에 고정 텍스트로 렌더링되며 서명자가 수정할 수 없다.
-- platform 계약을 생성과 함께 발송하려면 `send_immediately: true`, 예약하려면 `scheduled_send_at`과 필요 시 `message`를 전달한다.
-- 자체 채널로 링크를 보낼 때는 `dispatch_mode: external`을 전달한다. 참여자 이메일이 없으면 국내 휴대전화번호를 사용하며, 응답의 `participants[].signing_url`을 전달한다.
-
-```bash
-curl -sS -X POST "$BASE_URL/templates/{template_id}/create-contract" \
-  -H "X-API-Key: $SNOWSIGN_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "홍길동 근로계약서",
-    "participants": [
-      { "name": "홍길동", "email": "hong@example.com", "role": "근로자", "order": 1, "locale": "en" },
-      { "name": "스노우싸인(주)", "email": "hr@example.com", "role": "회사", "order": 2 }
-    ],
-    "variables": {
-      "계약시작일": "2025-02-01",
-      "급여": "3,500,000원"
-    }
-  }'
-```
-
-## 링크서명 운영
-
-- 템플릿 목록 또는 상세에서 `can_create_link_signing: true`인 1인 서명 템플릿을 선택하고 그 응답의 `template_id`를 `template_uuid`로 사용한다.
-- 생성 결과에서는 사용자에게 공유할 `link_url`을 안내한다. 내부 링크 토큰을 추출하거나 노출하지 않는다.
-- 일반 `GET /contracts` 목록에는 링크서명 계약이 포함되지 않는다. 특정 링크의 완료 계약은 `snowsign_list_link_signing_contracts`로 조회한다.
-- 완료 계약 응답의 `contract_id`는 기존 계약 상세·상태·PDF·감사추적인증서 도구에 그대로 사용할 수 있다.
-- `pause`는 신규 서명을 막고, `resume`은 다시 허용하며, `close`는 영구 종료한다. 현재 상태를 먼저 조회한 뒤 요청된 전이만 수행한다.
-- 링크서명 계약을 묶어 다운로드하는 전용 API는 없다. 필요한 완료 계약을 조회한 뒤 개별 계약 다운로드 도구를 사용한다.
-
-## PDF 기반 생성
-
-PDF 파일에서 바로 계약/템플릿을 만들 때는 먼저 업로드를 완료하고 `upload_id`를 생성 요청의 `document_upload_id`로 전달한다.
-
-- 로컬 파일이 있으면 MCP의 `snowsign_upload_pdf`를 우선 사용한다.
-- 브라우저/외부 시스템이 직접 업로드해야 하면 `snowsign_create_upload_session`으로 presigned POST 정보를 발급한다.
-- PDF 경고를 미리 보여줘야 할 때만 `snowsign_run_upload_diagnostics`를 호출한다.
-- 좌표는 PDF.js `getViewport({ scale: 1 })` 기준 pixel 좌표이며 `page_number`는 1부터 시작한다.
-- `send_immediately: true`는 생성 후 즉시 발송이므로 사용자 의도가 분명할 때만 실행한다.
-- 예약 생성에는 `scheduled_send_at`과 필요 시 `message`를 사용하며 `send_immediately: true`와 함께 전달하지 않는다.
-- 자체 전달 계약은 `dispatch_mode: external`로 생성하고 응답의 참여자별 `signing_url`을 사용한다. `send_immediately`, `scheduled_send_at`, 플랫폼 알림톡은 사용하지 않는다.
-- PDF 계약 참여자의 `locale` 기본값은 `ko`다. PDF 템플릿 역할은 `signers[].locale`로 기본 언어를 지정한다.
-
-계약 생성 fallback:
-
-```bash
-curl -sS -X POST "$BASE_URL/contracts" \
-  -H "X-API-Key: $SNOWSIGN_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "외주 계약서",
-    "document_upload_id": "upl_abc123",
-    "participants": [{ "role": "계약자", "name": "홍길동", "email": "hong@example.com", "locale": "en" }],
-    "signature_fields": [{
-      "participant": "계약자",
-      "type": "signature",
-      "page_number": 1,
-      "position_x": 410,
-      "position_y": 710,
-      "width": 120,
-      "height": 50
-    }]
-  }'
-```
-
-## platform 계약 발송 예약, 즉시 발송, 계약 취소, 리마인더
-
-발송·예약·리마인더 API는 platform 계약에 사용한다. external 계약의 링크 재안내는 자체 발송 채널에서 처리한다.
-
-예약 설정 또는 변경:
-
-```bash
-curl -sS -X POST "$BASE_URL/contracts/{contract_id}/send" \
-  -H "X-API-Key: $SNOWSIGN_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{ "scheduled_send_at": "2026-09-04T10:30:00+09:00", "message": "계약서 검토 부탁드립니다." }'
-```
-
-즉시 발송은 `scheduled_send_at`을 생략하고, 예약 취소는 명시적으로 `null`을 전달한다.
-
-```bash
-curl -sS -X POST "$BASE_URL/contracts/{contract_id}/send" \
-  -H "X-API-Key: $SNOWSIGN_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{ "scheduled_send_at": null }'
-```
-
-즉시 발송:
-
-```bash
-curl -sS -X POST "$BASE_URL/contracts/{contract_id}/send" \
-  -H "X-API-Key: $SNOWSIGN_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{ "message": "계약서 검토 부탁드립니다." }'
-```
-
-취소:
-
-```bash
-curl -sS -X POST "$BASE_URL/contracts/{contract_id}/cancel" \
-  -H "X-API-Key: $SNOWSIGN_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{ "reason": "사용자 요청" }'
-```
-
-리마인더:
-
-```bash
-curl -sS -X POST "$BASE_URL/contracts/{contract_id}/remind" \
-  -H "X-API-Key: $SNOWSIGN_API_KEY"
-```
-
-실행 후에는 성공 여부, 현재 상태, 예약·발송·취소 시각과 예약 실패 코드처럼 사용자가 확인해야 할 값만 요약한다.
-
-발송·리마인더 API 성공은 발송 요청이 접수됐다는 의미다. 사용자가 실제 전달이나 반송 여부를 물으면 계약 상세를 다시 조회해 참여자별 `email_delivery.status`를 확인한다. `failed`, `bounced`, `complained`는 문제 상태이며, 미해결 `complained` 참여자는 리마인더 대상에서 제외된다.
-
-## 다운로드
-
-다운로드 전 `GET /contracts/{contract_id}/status` 또는 상세 조회로 `completed` 상태인지 확인한다.
-
-```bash
-curl -sS "$BASE_URL/contracts/{contract_id}/download" \
-  -H "X-API-Key: $SNOWSIGN_API_KEY"
-```
-
-감사추적인증서:
-
-```bash
-curl -sS "$BASE_URL/contracts/{contract_id}/audit-certificate" \
-  -H "X-API-Key: $SNOWSIGN_API_KEY"
-```
-
-반환되는 `download_url`은 1시간 유효한 임시 URL이다. 답변에는 파일명과 만료 시각을 함께 알려준다.
-
-## 에러 대응
-
-에러 응답은 `success: false`와 `error.code`를 기준으로 처리한다.
-
-- `API_KEY_REQUIRED`, `INVALID_API_KEY`: `SNOWSIGN_API_KEY` 설정 또는 키 유효성 확인
-- `VALIDATION_ERROR`: 필수 필드, 이메일, 역할명, 변수명, 날짜 형식 확인
-- `QUOTA_EXCEEDED`: 월간 사용량 한도 초과
-- `CONTRACT_NOT_FOUND`, `TEMPLATE_NOT_FOUND`: ID 오타 또는 조직 권한 확인
-- `INVALID_CONTRACT_STATUS`: 현재 계약 상태에서 불가능한 작업
-- `INVALID_DISPATCH_MODE`: 현재 전달 방식에서 불가능한 작업
-- `EXTERNAL_DISPATCH_SCHEDULE_NOT_ALLOWED`: external 계약에 예약 발송을 요청함
-- `APPROVAL_REQUIRED`: 내부 앱에서 결재 후 발송 필요
-- HTTP `429`: API Key당 분당 100회 제한, 잠시 후 재시도
-
-## 응답 방식
-
-사용자에게는 원본 JSON 전체를 그대로 던지지 않는다. 다음처럼 작업 결과 중심으로 말한다.
-
-- 조회: 찾은 계약 수와 핵심 필드
-- 생성: 생성된 계약 ID, 상태, 전달 방식. external 계약이면 참여자별 서명 링크
-- 발송/취소/리마인더: 성공 여부와 변경된 상태
-- 다운로드: 파일명, URL 만료 시각, 다운로드 URL
-- 실패: 에러 코드, 원인, 필요한 사용자 입력
-
-민감정보인 API Key와 내부 인증 헤더 값은 절대 출력하지 않는다.
+사용자의 요청을 스노우싸인 Public API 작업으로 수행하고 필요한 결과만 보고한다. 정확한 요청·응답 구조와 오류 코드는 작업에 해당하는 [Public API 가이드](references/public-api-guide.md) 섹션에서 확인한다.
+
+## 접속과 도구
+
+- Base URL은 `https://api-snowsign.jtsnowball.com/public/v1`, 인증 헤더는 `X-API-Key`다.
+- 스노우싸인 MCP 도구를 우선하고, 필요한 도구가 없거나 호출이 실패한 경우에만 `SNOWSIGN_API_KEY`와 `curl`을 사용한다.
+- curl 사용 전 환경변수 존재 여부를 검사한다. 키가 없으면 설정을 요청하고 호출을 멈춘다.
+- API Key는 조직 자격증명이다. 생성한 리소스는 `전체 업무`에 속하며 모든 멤버용 템플릿만 조회·사용할 수 있다.
+- API Key, 인증 헤더 값, 내부 링크 토큰은 답변·로그·예시 코드에 노출하지 않는다.
+
+## 실행 권한
+
+- 조회는 사용자 요청 범위에서 바로 수행할 수 있다.
+- 계약·템플릿·링크서명 생성, 발송·예약·취소·리마인더, 링크서명 상태 변경은 사용자의 명시적 요청이나 이미 합의된 업무 트리거가 있을 때만 실행한다.
+- 계약 활성화는 월간 사용량을 차감하고 참여자의 접근을 허용한다. `APPROVAL_REQUIRED`가 반환되면 자동 상신하지 말고 필요한 내부 결재를 안내한다.
+- 링크서명 종료는 되돌릴 수 없으므로 현재 상태와 종료 의도를 확인한다.
+- 변경 요청이 모호하면 필요한 동작만 짧게 확인한다. 기존 승인을 다른 계약이나 후속 작업으로 확대하지 않는다.
+
+## 전달 방식
+
+### 플랫폼 발송
+
+- `platform` 계약은 모든 참여자의 이메일이 필요하다.
+- 기본적으로 초안으로 만들며, `send_immediately: true`로 즉시 발송하거나 `scheduled_send_at`으로 예약한다.
+- 예약 시각은 timezone을 포함한 ISO 8601 형식이어야 하며 현재보다 미래이고 계약 마감일보다 앞이어야 한다.
+- 발송 API 성공은 요청 접수다. 실제 전달 문제는 계약 목록·상태의 `email_issue`와 상세의 `participants[].email_delivery`로 확인한다.
+
+### 자체 채널 전달
+
+- `external` 계약은 참여자마다 이메일 또는 국내 휴대전화번호가 필요하다.
+- 생성 즉시 활성화되므로 `send_immediately`와 `scheduled_send_at`을 전달하지 않는다.
+- 스노우싸인은 이메일·문자·알림톡을 발송하지 않으며 발송·예약·리마인더 API도 사용하지 않는다.
+- 휴대전화번호가 전달 수단이면 전화번호 확인 방식이 자동 적용된다. `security.method: phone`은 요청에 넣지 않는다.
+- 생성 응답이나 계약 상세의 참여자별 `signing_url`과 `expires_at`을 사용한다. 서명 링크는 해당 참여자에게만 전달하는 민감정보로 취급한다.
+
+## 생성 전 검증
+
+### 템플릿 계약
+
+1. 템플릿 상세를 조회한다.
+2. `participants[].role`이 `signers[].role_name`과 정확히 일치하는지 확인한다.
+3. 필수 변수 중 기본값과 요청값이 모두 없는 항목만 사용자에게 묻는다. 변수명은 템플릿 정의와 정확히 일치해야 한다.
+4. 순차 서명이면 참여자마다 `order`를 지정한다.
+5. 비밀번호 방식은 `{ "method": "password", "value": "..." }`, 간편인증은 휴대전화번호가 필요하다.
+6. 참여자 `locale`을 생략하면 역할의 언어를 상속한다.
+
+### PDF 계약·템플릿
+
+1. 로컬 PDF는 업로드 도구를 사용한다. 브라우저나 외부 시스템이 직접 올릴 때만 업로드 세션을 발급한다.
+2. 업로드 경고를 미리 확인해야 할 때만 진단 API를 호출한다.
+3. 업로드 결과의 `upload_id`를 `document_upload_id`로 전달한다.
+4. 역할, 참여자, 서명 필드와 순서를 검증한다. 좌표는 PDF.js `getViewport({ scale: 1 })` 기준이고 페이지 번호는 1부터 시작한다.
+5. PDF 계약 참여자의 기본 언어는 `ko`다.
+
+정확한 필드와 예시는 해당 생성 API의 레퍼런스를 읽고 추측하지 않는다.
+
+## 링크서명
+
+- 템플릿 상세의 `can_create_link_signing`이 `true`인지 확인하고 응답의 `template_id`를 `template_uuid`로 사용한다.
+- 외부에는 생성 결과의 `link_url`만 공유하며 내부 토큰을 추출하거나 노출하지 않는다.
+- 일반 계약 목록에는 링크서명으로 생성된 계약이 포함되지 않는다. 해당 링크서명의 완료 계약 목록을 조회한 뒤 반환된 `contract_id`로 상세·상태·문서를 조회한다.
+- `pause`는 신규 서명을 막고 `resume`은 다시 허용하며 `close`는 영구 종료한다. 요청한 상태 전이만 수행한다.
+- 링크서명 계약의 묶음 다운로드 전용 API는 없다. 완료 계약을 조회한 뒤 개별 다운로드한다.
+
+## 작업 절차와 결과 보고
+
+1. 요청한 작업과 필요한 식별자를 파악한다.
+2. 관련 레퍼런스 섹션에서 필수 입력과 현재 응답 구조를 확인한다.
+3. 누락된 필수값만 묻고 MCP 또는 curl로 호출한다.
+4. 응답의 `success`를 확인한다. 실패하면 `error.code`와 `error.message`를 기준으로 원인과 다음 조치를 설명한다.
+5. 변경 작업의 응답이 불명확하거나 연결이 끊기면 상태를 조회해 결과를 확인한 뒤 재시도 여부를 판단한다. 생성·발송 요청을 무조건 반복하지 않는다.
+
+결과는 원본 JSON 대신 다음 정보를 중심으로 요약한다.
+
+- 조회: 계약 수, ID, 제목, 상태, 전달 방식, 관련 시각과 참여자 상태
+- 생성: 계약 ID, 상태, 전달 방식. `external`이면 참여자별 서명 링크와 만료 시각
+- 발송·예약·취소·리마인더: 요청 결과와 변경된 상태
+- 다운로드: 파일명, 만료 시각, 다운로드 URL. 계약 PDF와 감사추적인증서는 완료 계약에서만 요청하며 URL은 1시간 유효하다.
+- 실패: 오류 코드, 원인, 사용자가 제공하거나 처리해야 할 사항
+
+HTTP 429는 제한 안내에 따라 재시도하되, 상태 변경 요청은 먼저 처리 여부를 조회한다.

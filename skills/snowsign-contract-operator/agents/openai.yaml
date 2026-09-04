@@ -1,7 +1,7 @@
 interface:
   display_name: "SnowSign Contract Operator"
-  short_description: "SnowSign 일반 계약과 링크서명 업무 처리"
-  default_prompt: "Use $snowsign-contract-operator to find completed contracts, including link-signing contracts, and summarize the results."
+  short_description: "SnowSign 계약 생성·발송·조회·다운로드 운영"
+  default_prompt: "Use $snowsign-contract-operator to safely create, send, inspect, or download a SnowSign contract."
 
 policy:
   allow_implicit_invocation: true
