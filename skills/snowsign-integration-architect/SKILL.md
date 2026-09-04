@@ -45,7 +45,7 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 
 다음 작업에 이 스킬을 사용한다.
 
-- ERP/CRM/그룹웨어/자체 백오피스에 스노우싸인 계약 생성, 즉시·예약 발송, 상태 조회, 다운로드 기능 연동
+- ERP/CRM/그룹웨어/자체 백오피스에 계약 생성, 스노우싸인 발송 또는 자체 채널 링크 전달, 상태 조회, 다운로드 기능 연동
 - 외부 화면 안에서 스노우싸인 계약 생성 UI를 iframe으로 제공하는 Hosted Embed 연동
 - 템플릿 기반 또는 PDF 업로드 기반 계약/템플릿 생성 플로우 설계
 - 1인 템플릿 기반 링크서명 생성·관리와 완료 계약 수집 플로우 설계
@@ -64,7 +64,8 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 - API Key는 조직 자격증명이다. 생성 리소스는 `전체 업무`에 속하고 모든 멤버용 템플릿만 조회·사용한다.
 - 결재가 필요한 발송은 자동 상신하지 않고 `APPROVAL_REQUIRED`를 반환한다.
 - API Key와 Webhook Secret은 코드, 로그, 답변 예시에 노출하지 않는다.
-- 계약 생성은 기본적으로 초안(`draft`)이다. PDF·템플릿 생성 요청에 `scheduled_send_at`을 전달하면 발송 예약(`scheduled`)으로 생성되며, PDF 요청의 `send_immediately: true`와는 함께 쓸 수 없다.
+- `platform` 계약은 참여자 이메일이 필요하며 기본적으로 초안이다. `send_immediately: true`로 즉시 발송하거나 `scheduled_send_at`으로 예약할 수 있다.
+- `external` 계약은 참여자별 이메일 또는 국내 휴대전화번호가 필요하다. 생성 즉시 활성화되어 서명 링크를 반환하며 스노우싸인은 메시지를 발송하지 않는다.
 - `POST /contracts/{id}/send`는 `scheduled_send_at` 생략 시 즉시 발송, 시각 지정 시 예약 설정·변경, `null` 지정 시 예약 취소다.
 - 링크서명은 API 응답의 `link_url`만 외부에 공유하며 내부 링크 토큰을 저장하거나 노출하지 않는다.
 - 상태 변경 API, 발송 예약 변경·취소, 실제 발송은 사용자 확인 또는 명확한 업무 트리거 없이는 실행하지 않는다.
@@ -100,6 +101,7 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 필수 질문 축:
 
 - 누가 이 기능을 쓰는가: 관리자, 영업, HR, 고객, 자동 배치
+- 누가 링크를 전달하는가: 스노우싸인 또는 연동 서비스의 문자·알림톡
 - 언제 계약을 생성/발송하는가: 즉시 또는 예약, 수동 버튼, 상태 변경, 배치, 외부 이벤트
 - 어떤 데이터가 원천인가: ERP, CRM, 자체 DB, CSV, 사용자 입력
 - 템플릿을 쓰는가, 업로드 PDF로 계약/템플릿을 생성하는가
@@ -115,7 +117,7 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 
 구현 전 다음과 같은 그림을 만든다.
 
-- 주요 사용자 여정: 생성, 예약·변경·취소 또는 즉시 발송, 서명 진행, 완료, 실패/취소, 재처리
+- 주요 사용자 여정: 생성, 플랫폼 발송 또는 자체 채널 링크 전달, 서명 진행, 완료, 실패/취소, 재처리
 - 상태 전이: 내부 상태와 스노우싸인 상태 매핑
 - 데이터 매핑: 내부 필드 -> 스노우싸인 API 필드 -> 웹훅 payload -> 내부 업데이트
 - 권한/승인: 누가 생성/발송/취소/다운로드할 수 있는가
@@ -167,11 +169,13 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 - PDF 기반 생성은 `POST /uploads`로 업로드 세션을 만들고 업로드 완료 후 `document_upload_id`를 계약/템플릿 생성 API에 전달한다.
 - PDF 좌표는 PDF.js `getViewport({ scale: 1 })` 기준 pixel 좌표로 설계한다.
 - `participants[].role`은 템플릿의 역할명과 정확히 일치해야 한다.
+- 자체 채널로 링크를 전달하면 `dispatch_mode: external`을 사용하고 생성 응답 또는 계약 상세의 `participants[].signing_url`을 저장한다. 별도 링크 조회 API는 없다.
+- external 계약에는 예약·플랫폼 발송·리마인더를 설계하지 않는다.
 - 서명자 언어는 `locale: ko|en`으로 매핑한다. PDF 계약의 기본값은 `ko`이며 템플릿 계약은 생략 시 역할 `locale`을 상속한다.
 - 순차 서명은 참여자별 `order`를 명확히 저장한다.
 - 예약 시각은 timezone을 포함한 분 단위 ISO 8601로 전달하고 현재보다 미래이며 계약 마감일보다 앞인지 검증한다.
 - 목록·상세·상태 응답의 `scheduled_send_at`과 `schedule_failure_code`를 내부 상태와 운영 화면에 반영한다.
-- 계약 발송은 사용량 차감과 외부 이메일 발송이 있으므로 승인/확인 UX를 둔다.
+- 계약 활성화는 사용량 차감과 참여자 접근 허용이 발생하므로 승인/확인 UX를 둔다.
 - 계약 이메일 전달 상태는 목록·상태의 `email_issue`와 상세의 `participants[].email_delivery`로 조회한다. 발송 API 성공을 실제 전달 완료로 간주하지 않는다.
 - `completed` 이전에는 PDF 다운로드를 전제로 하지 않는다.
 - 외부 API 실패는 사용자 메시지, 재시도 가능성, 내부 상태를 분리해 처리한다.
@@ -181,7 +185,8 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 - raw body로 HMAC-SHA256 서명을 검증한다.
 - 검증 실패는 401로 응답하고 처리하지 않는다.
 - 5초 내 2xx 응답 후 큐/잡으로 비동기 처리한다.
-- `contract_id + event + timestamp` 또는 별도 이벤트 ID로 idempotency를 보장한다.
+- payload의 `id`로 idempotency를 보장한다. 자동·수동 재전송에도 같은 ID가 유지된다.
+- 계약 이벤트의 `dispatch_mode`와 참여자의 `participant_id`, `email`, `phone`, `signing_order`, `security_method`를 내부 모델에 매핑한다.
 - `contract.completed`, `contract.cancelled`, `contract.expired`, `participant.declined`는 내부 상태 전이를 정의한다.
 - 링크서명 완료는 `participant.signed`와 `contract.completed`의 `data.link_signing`으로 식별한다. 링크 토큰·URL과 링크 lifecycle 이벤트는 제공되지 않는다.
 - 이메일 전달 실패·반송·수신거부는 Webhook 이벤트가 아니므로 계약 목록·상세·상태 API 조회로 별도 동기화한다.

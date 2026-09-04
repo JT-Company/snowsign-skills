@@ -7,7 +7,7 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 
 const SERVER_NAME = "snowsign";
-const SERVER_VERSION = "0.7.0";
+const SERVER_VERSION = "0.8.0";
 const DEFAULT_BASE_URL = "https://api-snowsign.jtsnowball.com/public/v1";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -15,7 +15,8 @@ const apiGuidePath = path.join(repoRoot, "skills", "snowsign-integration-archite
 const hostedEmbedGuidePath = path.join(repoRoot, "skills", "snowsign-integration-architect", "references", "hosted-embed-guide.md");
 const webhookGuidePath = path.join(repoRoot, "skills", "snowsign-integration-architect", "references", "webhook-guide.md");
 const SIGNATURE_FIELD_POLICY = "signature_fields는 PDF.js getViewport({ scale: 1 }) 기준 pixel 좌표를 사용합니다. is_required 생략 시 true이며 signature/stamp/name은 항상 true, variable은 항상 false, text/date/checkbox만 false 지정 가능합니다. text_align은 left/center/right 중 하나이며 name/text/date 필드와 텍스트/날짜 variable에만 적용됩니다. 날짜 필드/날짜 변수는 date_precision과 date_format_pattern을 사용할 수 있습니다.";
-const SCHEDULE_POLICY = "scheduled_send_at은 timezone을 포함하고 초·밀리초가 0인 ISO 8601 시각이어야 하며, 현재보다 미래이고 계약 마감일보다 앞이어야 합니다.";
+const SCHEDULE_POLICY = "platform 계약의 scheduled_send_at은 timezone을 포함하고 초·밀리초가 0인 ISO 8601 시각이어야 하며, 현재보다 미래이고 계약 마감일보다 앞이어야 합니다.";
+const EXTERNAL_DISPATCH_POLICY = "dispatch_mode=external이면 스노우싸인이 메시지를 발송하지 않습니다. 참여자마다 email 또는 국내 휴대전화번호가 필요하며 생성 즉시 활성화되어 signing_url이 반환됩니다. phone 보안 수단은 직접 지정하지 말고, send_immediately와 scheduled_send_at은 생략한 뒤 반환된 링크를 자체 채널로 전달하세요.";
 
 if (typeof fetch !== "function") {
   throw new Error("스노우싸인 MCP 서버는 Node.js 18 이상이 필요합니다.");
@@ -237,7 +238,7 @@ function objectSchema(properties, required) {
 const TOOLS = [
   {
     name: "snowsign_list_contracts",
-    description: "스노우싸인 계약 목록을 조회합니다. responsible_permission_group은 관리 그룹, approval_status는 최신 결재 상태이며 email_issue로 미해결 이메일 전달 문제를 확인할 수 있습니다.",
+    description: "스노우싸인 계약 목록을 조회합니다. dispatch_mode로 스노우싸인 발송과 자체 채널 전달 계약을 구분하고, platform 계약은 email_issue로 이메일 전달 문제를 확인할 수 있습니다.",
     inputSchema: objectSchema({
       page: { type: "integer", description: "페이지 번호입니다." },
       per_page: { type: "integer", description: "페이지당 항목 수입니다." },
@@ -246,14 +247,14 @@ const TOOLS = [
   },
   {
     name: "snowsign_get_contract",
-    description: "스노우싸인 계약 상세 정보를 조회합니다. 관리 그룹과 최신 결재 상태, 참여자의 이메일·서명 언어 및 이메일 전달 문제를 확인할 수 있습니다.",
+    description: "계약 상세와 참여자 연락처·상태를 조회합니다. external 계약의 participants[].signing_url도 반환하며, 서명 링크는 해당 참여자에게만 전달해야 합니다.",
     inputSchema: objectSchema({
       contract_id: { type: "string", description: "계약 ID입니다." },
     }, ["contract_id"]),
   },
   {
     name: "snowsign_get_contract_status",
-    description: "스노우싸인 계약 상태와 최신 결재 상태를 조회합니다. email_issue와 email_issue_count도 함께 반환합니다.",
+    description: "스노우싸인 계약 상태와 전달 방식, 최신 결재 상태를 조회합니다. platform 계약의 이메일 문제는 email_issue와 email_issue_count로 확인합니다.",
     inputSchema: objectSchema({
       contract_id: { type: "string", description: "계약 ID입니다." },
     }, ["contract_id"]),
@@ -287,14 +288,14 @@ const TOOLS = [
   },
   {
     name: "snowsign_create_contract_from_pdf",
-    description: "업로드 PDF로 전체 업무 관리 그룹의 계약서를 초안·즉시 발송·예약 중 하나로 생성합니다. 관리 그룹 필드는 전달하지 않습니다. send_immediately=true와 scheduled_send_at은 함께 쓸 수 없고, 결재가 필요하면 APPROVAL_REQUIRED를 반환합니다. participants[].locale 기본값은 ko입니다.",
+    description: "업로드 PDF로 전체 업무 계약을 생성합니다. platform은 초안·즉시 발송·예약을, external은 자체 전달할 참여자별 서명 링크 생성을 지원합니다. 결재가 필요하면 APPROVAL_REQUIRED를 반환합니다.",
     inputSchema: objectSchema({
-      contract: { type: "object", description: `POST /v1/contracts 요청 본문입니다. document_upload_id, participants, signature_fields를 포함합니다. 예약 생성 시 message와 scheduled_send_at을 포함할 수 있습니다. ${SCHEDULE_POLICY} ${SIGNATURE_FIELD_POLICY}` },
+      contract: { type: "object", description: `POST /v1/contracts 요청 본문입니다. document_upload_id, participants, signature_fields를 포함합니다. dispatch_mode 기본값은 platform입니다. ${SCHEDULE_POLICY} ${EXTERNAL_DISPATCH_POLICY} ${SIGNATURE_FIELD_POLICY}` },
     }, ["contract"]),
   },
   {
     name: "snowsign_send_contract",
-    description: "스노우싸인 계약을 즉시 발송하거나 발송 예약을 설정·변경·취소합니다. scheduled_send_at을 생략하면 즉시 발송하고, 시각을 지정하면 예약하며, null이면 예약을 취소합니다.",
+    description: "platform 계약을 즉시 발송하거나 발송 예약을 설정·변경·취소합니다. scheduled_send_at을 생략하면 즉시 발송하고, 시각을 지정하면 예약하며, null이면 예약을 취소합니다. external 계약은 생성 즉시 활성화되므로 사용하지 않습니다.",
     inputSchema: objectSchema({
       contract_id: { type: "string", description: "계약 ID입니다." },
       message: { type: "string", description: "발송 메시지입니다." },
@@ -317,7 +318,7 @@ const TOOLS = [
   },
   {
     name: "snowsign_remind_contract",
-    description: "스노우싸인 계약 참여자에게 리마인더를 보냅니다.",
+    description: "platform 계약 참여자에게 리마인더를 보냅니다. external 계약의 재안내는 자체 발송 채널에서 처리합니다.",
     inputSchema: objectSchema({
       contract_id: { type: "string", description: "계약 ID입니다." },
       message: { type: "string", description: "리마인더 메시지입니다." },
@@ -334,7 +335,7 @@ const TOOLS = [
   },
   {
     name: "snowsign_download_audit_certificate",
-    description: "스노우싸인 감사추적인증서를 다운로드합니다.",
+    description: "완료된 스노우싸인 계약의 감사추적인증서를 다운로드합니다.",
     inputSchema: objectSchema({
       contract_id: { type: "string", description: "계약 ID입니다." },
       output_path: { type: "string", description: "파일로 저장할 경로입니다. 생략하면 base64로 반환합니다." },
@@ -386,10 +387,10 @@ const TOOLS = [
   },
   {
     name: "snowsign_create_contract_from_template",
-    description: "모든 멤버가 사용할 수 있는 템플릿으로 전체 업무 관리 그룹의 계약 초안 또는 발송 예약을 생성합니다. 관리 그룹 필드는 전달하지 않습니다. 먼저 signers[].security_method와 locale을 확인하고 password 역할에는 security 값을 전달하며 easy_cert 역할에는 phone만 전달합니다.",
+    description: "모든 멤버가 사용할 수 있는 템플릿으로 전체 업무 계약을 생성합니다. platform은 초안·즉시 발송·예약을, external은 자체 전달할 참여자별 서명 링크 생성을 지원합니다. password 역할에는 method=password와 value를 담은 participants[].security, easy_cert 역할에는 participants[].phone이 필요합니다.",
     inputSchema: objectSchema({
       template_id: { type: "string", description: "템플릿 ID입니다." },
-      contract: { type: "object", description: `POST /v1/templates/{id}/create-contract 요청 본문입니다. 예약 생성 시 message와 scheduled_send_at을 포함할 수 있습니다. ${SCHEDULE_POLICY}` },
+      contract: { type: "object", description: `POST /v1/templates/{id}/create-contract 요청 본문입니다. dispatch_mode 기본값은 platform입니다. ${SCHEDULE_POLICY} ${EXTERNAL_DISPATCH_POLICY}` },
     }, ["template_id", "contract"]),
   },
   {
@@ -489,7 +490,7 @@ const TOOLS = [
     name: "snowsign_get_api_reference_section",
     description: "스노우싸인 API 참조 문서의 특정 섹션을 반환합니다.",
     inputSchema: objectSchema({
-      title: { type: "string", description: "섹션 제목입니다. 예: 템플릿으로 계약서 생성, 에러 처리" },
+      title: { type: "string", description: "섹션 제목입니다. 예: 템플릿 계약서 생성, 에러 처리" },
     }, ["title"]),
   },
   {
@@ -521,7 +522,7 @@ const TOOLS = [
 const PROMPTS = [
   {
     name: "snowsign_contract_operator",
-    description: "스노우싸인 일반 계약과 링크서명의 조회, 생성, 상태 관리, 완료 계약 확인, 다운로드를 수행합니다.",
+    description: "스노우싸인 일반·외부 전달 계약과 링크서명의 생성, 조회, 상태 관리, 다운로드를 수행합니다.",
     arguments: [],
   },
   {
@@ -695,7 +696,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "스노우싸인 MCP 도구로 일반 계약과 링크서명을 조회·운영하세요. API Key는 조직 자격증명이며 생성 리소스는 전체 업무에 속하고 템플릿은 모든 멤버가 사용할 수 있는 항목만 사용합니다. 상태 변경 작업, 즉시 발송, 발송 예약 설정·변경·취소는 실행 전 사용자 확인을 받으세요. 예약 시각은 timezone을 포함한 분 단위 ISO 8601로 전달하고 계약 마감일보다 앞인지 확인하세요. APPROVAL_REQUIRED이면 자동 상신하지 말고 내부 앱에서 결재가 필요하다고 안내하세요. 계약 결과에서는 responsible_permission_group, approval_status, scheduled_send_at, schedule_failure_code를 확인하세요. PDF 기반 생성은 document_upload_id를 준비한 뒤 실행하고, 링크서명 결과에서는 link_url만 공유하세요. 일반 계약 목록에는 링크서명 계약이 포함되지 않습니다.",
+            text: "스노우싸인 MCP 도구로 일반 계약, 자체 채널로 전달할 external 계약과 링크서명을 조회·운영하세요. API Key는 조직 자격증명이며 생성 리소스는 전체 업무에 속하고 템플릿은 모든 멤버가 사용할 수 있는 항목만 사용합니다. 상태 변경과 계약 생성은 실행 전 사용자 의도를 확인하세요. platform 계약은 이메일이 필요하고 초안·즉시 발송·예약을 지원합니다. external 계약은 참여자마다 이메일 또는 국내 휴대전화번호를 받고 send_immediately와 scheduled_send_at을 생략해 생성하세요. 생성 응답이나 계약 상세의 participants[].signing_url을 자체 문자·알림톡으로 전달하며 스노우싸인 발송·예약·리마인더 도구는 사용하지 않습니다. APPROVAL_REQUIRED이면 자동 상신하지 말고 내부 앱에서 결재가 필요하다고 안내하세요. 결과에서는 dispatch_mode, approval_status, scheduled_send_at, schedule_failure_code를 확인하세요. 링크서명 결과에서는 link_url만 공유하고, 일반 계약 목록에는 링크서명 계약이 포함되지 않음을 기억하세요.",
           },
         }],
       };
@@ -708,7 +709,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "snowsign_get_api_reference_section 도구로 필요한 API 섹션을 확인한 뒤 연동 코드를 작성하세요. API Key는 조직 자격증명이며 생성 리소스는 관리 그룹 입력 없이 전체 업무에 속합니다. 템플릿은 모든 멤버가 사용할 수 있는 항목만 조회·사용하고, 결재가 필요한 발송은 APPROVAL_REQUIRED로 중단됩니다. 외부 PDF는 업로드 후 document_upload_id로 전달하고 signature_fields는 PDF.js scale 1 좌표를 씁니다. 템플릿 계약은 역할별 보안 정책과 언어를 확인하며, 단건 계약은 생성 또는 발송 API에서 예약할 수 있습니다. 발송 API의 scheduled_send_at은 생략 시 즉시 발송, 시각 지정 시 예약, null 시 예약 취소입니다. 계약 응답의 responsible_permission_group, approval_status, scheduled_send_at, schedule_failure_code를 반영하세요. 링크서명 완료 계약은 일반 계약 목록과 분리해 조회합니다.",
+            text: "snowsign_get_api_reference_section 도구로 필요한 API 섹션을 확인한 뒤 연동 코드를 작성하세요. API Key는 조직 자격증명이며 생성 리소스는 관리 그룹 입력 없이 전체 업무에 속합니다. 템플릿은 모든 멤버가 사용할 수 있는 항목만 조회·사용하고, 결재가 필요한 발송은 APPROVAL_REQUIRED로 중단됩니다. 외부 PDF는 업로드 후 document_upload_id로 전달하고 signature_fields는 PDF.js scale 1 좌표를 씁니다. platform 계약은 참여자 이메일이 필요하고 초안·즉시 발송·예약을 지원합니다. 자체 문자·알림톡으로 링크를 보낼 때는 dispatch_mode=external과 참여자 이메일 또는 국내 휴대전화번호를 전달합니다. external 계약은 생성 즉시 활성화되고 participants[].signing_url을 반환하며 예약·플랫폼 발송·리마인더를 사용하지 않습니다. 계약 응답의 dispatch_mode, approval_status, scheduled_send_at, schedule_failure_code를 반영하고 external 링크는 생성 응답 또는 계약 상세에서 확인하세요. 링크서명 완료 계약은 일반 계약 목록과 분리해 조회합니다.",
           },
         }],
       };
@@ -734,7 +735,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "snowsign_get_webhook_guide_section 도구로 필요한 Webhook 섹션을 확인하세요. X-Webhook-Signature를 raw body와 secret으로 HMAC-SHA256 검증하고 5초 안에 2xx를 응답한 뒤 비동기 처리하세요. 링크서명 완료는 participant.signed와 contract.completed의 data.link_signing으로 식별하며, 링크 토큰·URL과 링크 lifecycle 이벤트는 제공되지 않습니다. 이메일 전달 실패·반송·수신거부는 Webhook으로 발행되지 않으므로 Public API 조회를 사용합니다.",
+            text: "snowsign_get_webhook_guide_section 도구로 필요한 Webhook 섹션을 확인하세요. X-Webhook-Signature를 raw body와 secret으로 HMAC-SHA256 검증하고 5초 안에 2xx를 응답한 뒤 비동기 처리하세요. payload.id를 멱등키로 사용하며 자동·수동 재전송에도 같은 ID가 유지됩니다. 계약 이벤트의 data.dispatch_mode와 참여자의 participant_id, email, phone, signing_order, security_method를 반영하세요. 링크서명 완료는 participant.signed와 contract.completed의 data.link_signing으로 식별하며 링크 토큰·URL과 lifecycle 이벤트는 제공되지 않습니다. 이메일 전달 실패·반송·수신거부는 Webhook으로 발행되지 않으므로 Public API 조회를 사용합니다.",
           },
         }],
       };

@@ -133,14 +133,14 @@ MCP 서버도 `SNOWSIGN_API_KEY` 환경변수를 사용합니다. 키는 스노�
 | 도구 | 설명 |
 |---|---|
 | `snowsign_list_contracts` | 계약 목록 조회 |
-| `snowsign_get_contract` | 계약 상세 및 이메일 전달 상태 조회 |
+| `snowsign_get_contract` | 계약 상세, 외부 전달 링크 및 이메일 전달 상태 조회 |
 | `snowsign_send_contract` | 계약 즉시 발송 및 예약 설정·변경·취소 |
 | `snowsign_cancel_contract` | 계약 취소 |
 | `snowsign_list_templates` | 템플릿 목록 조회 |
 | `snowsign_upload_pdf` | 로컬 PDF 업로드 |
 | `snowsign_create_contract_from_pdf` | 업로드 PDF로 계약 생성 |
 | `snowsign_create_template_from_pdf` | 업로드 PDF로 템플릿 생성 |
-| `snowsign_create_contract_from_template` | 템플릿으로 계약 초안 또는 발송 예약 생성 |
+| `snowsign_create_contract_from_template` | 템플릿으로 플랫폼·외부 전달 계약 생성 |
 | `snowsign_create_link_signing` | 1인 템플릿으로 링크서명 생성 |
 | `snowsign_list_link_signings` | 링크서명 목록 조회 |
 | `snowsign_list_link_signing_contracts` | 링크별 완료 계약 조회 |
@@ -148,7 +148,7 @@ MCP 서버도 `SNOWSIGN_API_KEY` 환경변수를 사용합니다. 키는 스노�
 | `snowsign_get_hosted_embed_guide_section` | Hosted Embed 문서 섹션 확인 |
 | `snowsign_get_webhook_guide_section` | Webhook 문서 섹션 확인 |
 
-계약 생성은 템플릿 기반과 PDF 업로드 기반을 모두 지원합니다. 두 방식 모두 생성 시 발송을 예약할 수 있고, `snowsign_send_contract`로 즉시 발송하거나 예약을 설정·변경·취소할 수 있습니다. PDF 기반 생성은 `snowsign_upload_pdf`로 `upload_id`를 만든 뒤 계약/템플릿 생성 도구의 `document_upload_id`로 전달합니다. 템플릿 계약은 먼저 역할별 `security_method`와 `locale`을 확인합니다. 링크서명은 템플릿 상세의 `can_create_link_signing`이 `true`인 템플릿으로 생성하고 반환된 `link_url`을 공유합니다. 일반 계약 목록에는 링크서명 계약이 포함되지 않으므로 링크별 완료 계약 도구로 조회합니다. 계약 이메일의 실패·반송·수신거부는 계약 조회 응답의 `email_issue`와 `participants[].email_delivery`로 확인합니다.
+계약 생성은 템플릿 기반과 PDF 업로드 기반을 모두 지원합니다. 기본 `platform` 계약은 스노우싸인이 이메일로 발송하며 즉시 발송하거나 예약할 수 있습니다. `dispatch_mode: external` 계약은 이메일 또는 국내 휴대전화번호로 참여자를 만들고, 생성 응답이나 계약 상세의 참여자별 `signing_url`을 자체 문자·알림톡으로 전달합니다. PDF 기반 생성은 `snowsign_upload_pdf`의 `upload_id`를 `document_upload_id`로 전달합니다. 링크서명은 템플릿 상세의 `can_create_link_signing`이 `true`인 템플릿으로 생성하고 반환된 `link_url`을 공유합니다. 일반 계약 목록에는 링크서명 계약이 포함되지 않으므로 링크별 완료 계약 도구로 조회합니다.
 
 API Key는 조직 자격증명입니다. MCP로 만든 계약·템플릿·링크서명은 `전체 업무`에 속하며, 템플릿은 모든 멤버가 사용할 수 있는 항목만 조회·사용합니다. 결재가 필요한 발송은 자동 상신하지 않고 `APPROVAL_REQUIRED`로 중단됩니다.
 

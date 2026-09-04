@@ -1,6 +1,6 @@
 ---
 name: snowsign-contract-operator
-description: 스노우싸인 일반 계약과 링크서명의 조회, 생성, 즉시·예약 발송, 상태 관리, 완료 계약 확인, 다운로드를 Public API로 직접 처리하는 운영형 스킬.
+description: 스노우싸인 일반·외부 전달 계약과 링크서명의 조회, 생성, 발송, 상태 관리, 완료 계약 확인, 다운로드를 Public API로 직접 처리하는 운영형 스킬.
 allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 ---
 
@@ -37,7 +37,7 @@ test -n "$SNOWSIGN_API_KEY"
 | 작업 | MCP 도구 |
 |---|---|
 | 계약 목록 조회 | `snowsign_list_contracts` |
-| 계약 상세 조회 | `snowsign_get_contract` |
+| 계약 상세·외부 전달 링크 조회 | `snowsign_get_contract` |
 | 계약 상태 조회 | `snowsign_get_contract_status` |
 | PDF 업로드 세션 생성 | `snowsign_create_upload_session` |
 | 로컬 PDF 업로드 | `snowsign_upload_pdf` |
@@ -74,6 +74,7 @@ test -n "$SNOWSIGN_API_KEY"
 | 계약 이메일 전달/반송 확인 | `snowsign_get_contract`, `snowsign_get_contract_status` | `GET /contracts/{contract_id}`, `GET /contracts/{contract_id}/status` |
 | 템플릿 목록/상세 확인 | `snowsign_list_templates`, `snowsign_get_template` | `GET /templates`, `GET /templates/{template_id}` |
 | 새 계약서 만들어줘, 템플릿으로 계약서 만들어줘 | `snowsign_create_contract_from_template` | `POST /templates/{template_id}/create-contract` |
+| 계약 링크를 우리 문자·알림톡으로 보낼 수 있게 만들어줘 | 계약 생성 도구에 `dispatch_mode: external` 전달 | 해당 계약 생성 API |
 | 이 PDF로 계약서 만들어줘 | `snowsign_upload_pdf`, `snowsign_create_contract_from_pdf` | `POST /uploads`, `POST /contracts` |
 | 이 PDF로 템플릿 만들어줘 | `snowsign_upload_pdf`, `snowsign_create_template_from_pdf` | `POST /uploads`, `POST /templates` |
 | 업로드 PDF 검사해줘 | `snowsign_run_upload_diagnostics` | `POST /uploads/{upload_id}/diagnostics` |
@@ -101,6 +102,8 @@ test -n "$SNOWSIGN_API_KEY"
 - PDF 계약 생성: PDF 파일 또는 `document_upload_id`, 참여자, `signature_fields` 좌표가 필요하다.
 - PDF 템플릿 생성: PDF 파일 또는 `document_upload_id`, 역할(`signers`), 필요한 `signature_fields` 좌표가 필요하다.
 - 서명자 언어 요청이 있으면 `locale`을 `ko` 또는 `en`으로 지정한다. PDF 계약은 생략 시 `ko`, 템플릿 계약은 역할 언어를 사용한다.
+- 스노우싸인이 발송하는 `platform` 계약은 참여자 이메일이 필요하다.
+- 자체 채널로 전달하는 `external` 계약은 참여자마다 이메일 또는 국내 휴대전화번호가 필요하다. `security.method: phone`은 직접 전달하지 않는다. 생성 즉시 활성화되므로 `send_immediately`와 `scheduled_send_at`도 전달하지 않는다.
 - 즉시 발송, 예약 설정·변경·취소, 계약 취소, 리마인더: `contract_id`가 필요하다.
 - 예약 시각은 timezone을 포함하고 초·밀리초가 0인 ISO 8601 형식이어야 하며, 현재보다 미래이고 계약 마감일보다 앞이어야 한다.
 - 다운로드: `contract_id`가 필요하고 계약 상태가 `completed`여야 한다.
@@ -112,10 +115,11 @@ test -n "$SNOWSIGN_API_KEY"
 - 계약 즉시 발송: 월간 계약 사용량이 차감된다.
 - 발송 예약 설정·변경·취소: 계약 상태가 바뀐다. 사용량은 예약 실행 시 차감된다.
 - 계약 취소: 계약 상태가 바뀐다.
-- 리마인더 발송: 참여자에게 이메일이 발송된다.
+- 리마인더 발송: platform 계약 참여자에게 이메일이 발송된다.
 - 템플릿 기반 계약 생성: 새 리소스가 생성된다.
 - PDF 기반 계약/템플릿 생성: 새 리소스가 생성된다.
 - PDF 계약 생성에서 `send_immediately: true`이면 생성과 발송이 함께 수행되고 월간 계약 사용량이 차감된다.
+- `external` 계약 생성은 즉시 활성화되고 월간 계약 사용량이 차감된다.
 - 링크서명 생성·설정 수정·일시중지·재개·종료: 리소스나 외부 서명 가능 상태가 바뀐다. 종료는 되돌릴 수 없다.
 
 사용자 요청이 모호하면 실행 전 확인한다. 예: "이 계약 처리해줘"는 조회인지 발송인지 물어본다.
@@ -178,7 +182,7 @@ curl -sS "$BASE_URL/contracts/{contract_id}" \
   -H "X-API-Key: $SNOWSIGN_API_KEY"
 ```
 
-결과 요약 시에는 보통 `contract_id`, `title`, `status`, `approval_status`, `responsible_permission_group`, `scheduled_send_at`, `schedule_failure_code`, `created_at`, `sent_at`, `completed_at`, 참여자 상태를 중심으로 답한다. `email_issue`가 true이면 `email_issue_count`와 참여자별 `email_delivery.unresolved_issue`를 함께 확인하고, 정규화된 `failure_reason`만 사용자에게 설명한다.
+결과 요약 시에는 보통 `contract_id`, `title`, `status`, `dispatch_mode`, `approval_status`, `responsible_permission_group`, `scheduled_send_at`, `schedule_failure_code`, `created_at`, `sent_at`, `completed_at`, 참여자 상태를 중심으로 답한다. `external` 계약이면 참여자별 `signing_url`을 확인하고, `platform` 계약의 `email_issue`가 true이면 `email_issue_count`와 참여자별 `email_delivery.unresolved_issue`를 함께 확인한다.
 
 ## 템플릿 계약 생성
 
@@ -196,7 +200,8 @@ curl -sS "$BASE_URL/templates/{template_id}" \
 - `variables` 키는 템플릿 변수 `name`과 정확히 일치해야 한다.
 - 필수 변수인데 기본값이 없고 사용자 값도 없으면 생성 전에 사용자에게 묻는다.
 - 변수는 PDF에 고정 텍스트로 렌더링되며 서명자가 수정할 수 없다.
-- 생성과 함께 예약하려면 `scheduled_send_at`과 필요 시 `message`를 전달한다.
+- platform 계약을 생성과 함께 발송하려면 `send_immediately: true`, 예약하려면 `scheduled_send_at`과 필요 시 `message`를 전달한다.
+- 자체 채널로 링크를 보낼 때는 `dispatch_mode: external`을 전달한다. 참여자 이메일이 없으면 국내 휴대전화번호를 사용하며, 응답의 `participants[].signing_url`을 전달한다.
 
 ```bash
 curl -sS -X POST "$BASE_URL/templates/{template_id}/create-contract" \
@@ -234,6 +239,7 @@ PDF 파일에서 바로 계약/템플릿을 만들 때는 먼저 업로드를 �
 - 좌표는 PDF.js `getViewport({ scale: 1 })` 기준 pixel 좌표이며 `page_number`는 1부터 시작한다.
 - `send_immediately: true`는 생성 후 즉시 발송이므로 사용자 의도가 분명할 때만 실행한다.
 - 예약 생성에는 `scheduled_send_at`과 필요 시 `message`를 사용하며 `send_immediately: true`와 함께 전달하지 않는다.
+- 자체 전달 계약은 `dispatch_mode: external`로 생성하고 응답의 참여자별 `signing_url`을 사용한다. `send_immediately`, `scheduled_send_at`, 플랫폼 알림톡은 사용하지 않는다.
 - PDF 계약 참여자의 `locale` 기본값은 `ko`다. PDF 템플릿 역할은 `signers[].locale`로 기본 언어를 지정한다.
 
 계약 생성 fallback:
@@ -258,7 +264,9 @@ curl -sS -X POST "$BASE_URL/contracts" \
   }'
 ```
 
-## 발송 예약, 즉시 발송, 계약 취소, 리마인더
+## platform 계약 발송 예약, 즉시 발송, 계약 취소, 리마인더
+
+발송·예약·리마인더 API는 platform 계약에 사용한다. external 계약의 링크 재안내는 자체 발송 채널에서 처리한다.
 
 예약 설정 또는 변경:
 
@@ -334,6 +342,8 @@ curl -sS "$BASE_URL/contracts/{contract_id}/audit-certificate" \
 - `QUOTA_EXCEEDED`: 월간 사용량 한도 초과
 - `CONTRACT_NOT_FOUND`, `TEMPLATE_NOT_FOUND`: ID 오타 또는 조직 권한 확인
 - `INVALID_CONTRACT_STATUS`: 현재 계약 상태에서 불가능한 작업
+- `INVALID_DISPATCH_MODE`: 현재 전달 방식에서 불가능한 작업
+- `EXTERNAL_DISPATCH_SCHEDULE_NOT_ALLOWED`: external 계약에 예약 발송을 요청함
 - `APPROVAL_REQUIRED`: 내부 앱에서 결재 후 발송 필요
 - HTTP `429`: API Key당 분당 100회 제한, 잠시 후 재시도
 
@@ -342,7 +352,7 @@ curl -sS "$BASE_URL/contracts/{contract_id}/audit-certificate" \
 사용자에게는 원본 JSON 전체를 그대로 던지지 않는다. 다음처럼 작업 결과 중심으로 말한다.
 
 - 조회: 찾은 계약 수와 핵심 필드
-- 생성: 생성된 계약 ID와 상태
+- 생성: 생성된 계약 ID, 상태, 전달 방식. external 계약이면 참여자별 서명 링크
 - 발송/취소/리마인더: 성공 여부와 변경된 상태
 - 다운로드: 파일명, URL 만료 시각, 다운로드 URL
 - 실패: 에러 코드, 원인, 필요한 사용자 입력

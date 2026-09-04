@@ -212,8 +212,9 @@ flows:
 
 | 필드 | 포함 응답 | 설명 |
 |------|-----------|------|
-| `responsible_permission_group` | 생성, 목록, 상세 | 계약의 관리 그룹 `{ uuid, name, path }` |
+| `responsible_permission_group` | 목록, 상세 | 계약의 관리 그룹 `{ uuid, name, path }` |
 | `approval_status` | 생성, 목록, 상세, 상태 | 최신 결재 상태. 결재 요청이 없으면 `null` |
+| `dispatch_mode` | 생성, 발송, 목록, 상세, 상태 | `platform`: 스노우싸인에서 발송, `external`: 서명 링크 직접 전달 |
 | `scheduled_send_at` | 생성, 발송, 목록, 상세, 상태 | 예약 발송 시각. 예약되지 않았으면 `null` |
 | `schedule_failure_code` | 생성, 발송, 목록, 상세, 상태 | 예약 실행 실패 코드. 실패하지 않았으면 `null` |
 | `link_signing` | 상세, 상태 | 링크서명으로 생성된 계약에만 `{ id, name }` 포함 |
@@ -243,6 +244,7 @@ flows:
       "contract_id": "uuid-string",
       "title": "업무 위탁 계약서",
       "status": "in_progress",
+      "dispatch_mode": "platform",
       "approval_status": null,
       "responsible_permission_group": { "uuid": "permission-group-uuid", "name": "전체 업무", "path": ["전체 업무"] },
       "email_issue": true,
@@ -279,6 +281,7 @@ flows:
     "title": "업무 위탁 계약서",
     "description": "2025년 프로젝트 관련 업무 위탁 계약",
     "status": "in_progress",
+    "dispatch_mode": "platform",
     "approval_status": null,
     "responsible_permission_group": { "uuid": "permission-group-uuid", "name": "전체 업무", "path": ["전체 업무"] },
     "email_issue": true,
@@ -288,9 +291,11 @@ flows:
     "signing_order": "sequential",
     "participants": [
       {
+        "participant_id": "participant-uuid-1",
         "name": "홍길동",
         "email": "hong@example.com",
         "phone": "010-1234-5678",
+        "signing_order": 1,
         "status": "signed",
         "signed_at": "2025-01-06T14:30:00Z",
         "security_method": "identity_verification",
@@ -306,9 +311,11 @@ flows:
         }
       },
       {
+        "participant_id": "participant-uuid-2",
         "name": "김철수",
         "email": "kim@example.com",
         "phone": null,
+        "signing_order": 2,
         "status": "pending",
         "signed_at": null,
         "security_method": "password",
@@ -343,6 +350,8 @@ flows:
 }
 ```
 
+`dispatch_mode`가 `external`인 경우, 참여자별 `signing_url`과 `expires_at`을 추가로 확인할 수 있습니다.
+
 ---
 
 ### 계약서 상태 조회
@@ -357,6 +366,7 @@ flows:
   "data": {
     "contract_id": "uuid-string",
     "status": "in_progress",
+    "dispatch_mode": "platform",
     "approval_status": null,
     "email_issue": true,
     "email_issue_count": 1,
@@ -383,23 +393,25 @@ flows:
 |------|------|------|------|
 | title | string | Y | 계약서 제목 |
 | description | string | N | 계약서 설명 |
+| dispatch_mode | string | N | 계약서 전달 방식. 기본 `platform`. `external`이면 스노우싸인이 참여자에게 발송하지 않음 |
 | participants | array | Y | 참여자 목록 (역할 매핑) |
 | variables | object | N | 템플릿 변수 값. 텍스트 변수는 문자열, 날짜 변수는 ISO 날짜/연월 문자열, 체크박스 변수는 boolean |
 | signing_order | string | N | 서명 순서 (템플릿 기본값 사용 시 생략) |
+| send_immediately | boolean | N | `platform` 계약을 생성 후 즉시 발송. 기본값 `false` |
 | scheduled_send_at | string | N | 예약 발송 시각. timezone을 포함한 ISO 8601 형식 |
-| message | string | N | 예약 발송 시 참여자에게 전달할 메시지 |
+| message | string | N | 발송 시 참여자에게 전달할 메시지 |
 
 **participants 항목**
 
 | 필드 | 타입 | 필수 | 설명 |
 |------|------|------|------|
 | name | string | Y | 참여자 이름 |
-| email | string | Y | 참여자 이메일 |
-| phone | string | N | 참여자 휴대폰 번호. 휴대폰 간편인증 사용 시 필수 |
+| email | string 또는 null | 조건부 | 스노우싸인에서 계약 발송시 필수. 직접 발송(`external`)이면 이메일 또는 휴대전화번호 중 하나 필수 |
+| phone | string | 조건부 | 전화번호 확인·간편인증 또는 이메일 없는 직접 발송 참여자이면 필수 |
 | mobile_alimtalk_enabled | boolean | N | 모바일 알림톡 발송 여부. 생략 시 템플릿 역할 정책 사용 |
 | locale | string | N | `ko` 또는 `en`. 생략 시 템플릿 역할 언어 사용 |
 | role | string | Y | 템플릿에 정의된 역할명 (예: "근로자", "회사") |
-| security | object | 조건부 | 템플릿 역할이 비밀번호 보호이면 필수. `{ "method": "password", "value": "..." }`로 서명 비밀번호를 전달합니다. 이메일/간편인증 역할에는 전달하지 않습니다. |
+| security | object | 조건부 | 보통 생략. 템플릿의 비밀번호 인증이 있는 역할에는 `{ "method": "password", "value": "..." }` 필요 |
 
 **variables 사용법**
 
@@ -413,17 +425,15 @@ flows:
 ```json
 {
   "title": "홍길동 근로계약서",
+  "send_immediately": true,
   "participants": [
-    { "name": "홍길동", "email": "hong@example.com", "phone": "010-1234-5678", "role": "근로자", "mobile_alimtalk_enabled": true, "locale": "en" },
-    { "name": "스노우싸인(주)", "email": "hr@snowsign.io", "role": "회사", "security": { "method": "password", "value": "1234" } }
+    { "name": "홍길동", "email": "hong@example.com", "role": "근로자" }
   ],
   "variables": {
     "계약시작일": "2025-02-01",
     "개인정보동의": true,
     "급여": "3,500,000원"
-  },
-  "scheduled_send_at": "2026-09-04T10:30:00+09:00",
-  "message": "계약서 검토 부탁드립니다."
+  }
 }
 ```
 
@@ -433,15 +443,43 @@ flows:
 {
   "success": true,
   "data": {
-    "contract_id": "uuid-string",
+    "contract_id": "contract-uuid",
     "title": "홍길동 근로계약서",
-    "status": "scheduled",
+    "status": "pending",
     "approval_status": null,
-    "responsible_permission_group": { "uuid": "permission-group-uuid", "name": "전체 업무", "path": ["전체 업무"] },
-    "scheduled_send_at": "2026-09-04T01:30:00",
-    "schedule_failure_code": null
+    "scheduled_send_at": null,
+    "schedule_failure_code": null,
+    "sent_at": "2026-09-05T01:30:00"
   },
-  "message": "계약서 발송을 예약했습니다."
+  "message": "계약서가 생성 및 발송되었습니다."
+}
+```
+
+#### 자체 문자·알림톡으로 서명 링크 보내기
+
+위 요청에서 `dispatch_mode`를 `external`로 설정하면 계약이 즉시 시작됩니다.
+참여자 연락처는 `email`, `phone` 중 하나 이상을 입력합니다.
+스노우싸인은 참여자에게 메시지를 보내지 않고 서명 링크를 반환합니다.
+서명 예약 기능은 이용할 수 없습니다.
+
+**응답 필드 예시**
+
+```json
+{
+  "data": {
+    "contract_id": "contract-uuid",
+    "status": "pending",
+    "dispatch_mode": "external",
+    "participants": [
+      {
+        "participant_id": "participant-uuid",
+        "phone": "01012345678",
+        "security_method": "phone",
+        "signing_url": "https://...",
+        "expires_at": "2026-10-05T01:30:00"
+      }
+    ]
+  }
 }
 ```
 
@@ -514,7 +552,7 @@ flows:
 
 `POST /v1/contracts`
 
-업로드 PDF와 필드 위치 정보로 계약서를 생성합니다. 즉시 발송하거나 예약하지 않으면 초안으로 생성됩니다.
+업로드 PDF와 필드 위치 정보로 계약서를 생성합니다. `platform` 계약은 즉시 발송하거나 예약하지 않으면 초안으로 생성됩니다.
 
 **Request Body 주요 필드**
 
@@ -522,12 +560,13 @@ flows:
 |------|------|------|------|
 | title | string | Y | 계약서 제목 |
 | document_upload_id | string | Y | 업로드 세션 ID |
-| send_immediately | boolean | N | true이면 계약 생성 후 즉시 발송. 기본값 false |
+| dispatch_mode | string | N | 링크 전달 방식. 기본 `platform` |
+| send_immediately | boolean | N | `platform` 계약을 생성 후 즉시 발송. 기본값 false |
 | scheduled_send_at | string | N | 예약 발송 시각. timezone을 포함한 ISO 8601 형식 |
-| participants | array | Y | 참여자 목록. `locale`은 `ko` 또는 `en`, 기본값 `ko` |
+| participants | array | Y | 참여자 목록 |
 | signature_fields | array | Y | 입력칸/서명칸 위치 목록 |
 | variables | object | N | 변수 필드 값 |
-| integration | object | N | 외부 시스템 metadata |
+| integration | object | N | 외부 시스템 자유 metadata |
 
 대부분의 경우 참여자는 `role` 하나로 필드와 매핑할 수 있습니다. 같은 역할명이 2명 이상이면 구분이 모호하므로 `key`와 `role_name`을 명시하세요.
 
@@ -570,7 +609,7 @@ flows:
       "phone": "010-1234-5678",
       "security": { "method": "identity_verification" },
       "mobile_alimtalk_enabled": false,
-      "locale": "en"
+      "locale": "ko"
     }
   ],
   "signature_fields": [
@@ -603,8 +642,7 @@ flows:
   },
   "integration": {
     "external_system": "customer-erp",
-    "external_id": "ERP-2026-0001",
-    "sdk_version": "1.0.0"
+    "external_id": "ERP-2026-0001"
   }
 }
 ```
@@ -618,14 +656,14 @@ flows:
     "contract_id": "uuid-string",
     "title": "외주 계약서 - 홍길동",
     "status": "pending",
+    "dispatch_mode": "platform",
     "approval_status": null,
-    "responsible_permission_group": { "uuid": "permission-group-uuid", "name": "전체 업무", "path": ["전체 업무"] },
     "sent_at": "2026-06-11T03:20:00Z"
   }
 }
 ```
 
-`send_immediately=true`와 `scheduled_send_at`은 함께 지정할 수 없습니다. 둘 다 생략하면 초안으로 생성됩니다.
+`platform` 계약에서 `send_immediately=true`와 `scheduled_send_at`은 함께 지정할 수 없습니다. 둘 다 생략하면 초안으로 생성됩니다.
 
 ### 계약서 발송
 
@@ -648,6 +686,7 @@ flows:
   "data": {
     "contract_id": "uuid-string",
     "status": "scheduled",
+    "dispatch_mode": "platform",
     "scheduled_send_at": "2026-09-04T01:30:00",
     "schedule_failure_code": null,
     "sent_at": null
@@ -1265,6 +1304,8 @@ PATCH 요청 필드는 모두 선택이며 전달한 값만 변경합니다.
 | INVALID_LINK_SIGNING_STATUS | 지원하지 않는 목록 상태 |
 | INVALID_PUBLIC_LINK_SIGNING_REQUEST | 링크서명 요청 필드 또는 값 오류 |
 | INVALID_CONTRACT_STATUS | 현재 상태에서 수행할 수 없는 작업 |
+| INVALID_DISPATCH_MODE | 현재 전달 방식에서 수행할 수 없는 작업 |
+| EXTERNAL_DISPATCH_SCHEDULE_NOT_ALLOWED | 외부 전달 계약에 예약 발송을 요청함 |
 | APPROVAL_REQUIRED | 내부 앱에서 결재 후 발송해야 함 |
 
 ---
@@ -1394,5 +1435,5 @@ await fetch(`${BASE_URL}/contracts/${contractId}/send`, {
 
 ---
 
-*최종 수정: 2026-08-13*
-*문서 버전: 1.8*
+*최종 수정: 2026-09-04*
+*문서 버전: 1.9*

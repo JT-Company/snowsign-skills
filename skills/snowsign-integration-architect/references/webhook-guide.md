@@ -31,7 +31,7 @@
 | 타임아웃 | 5초 |
 | 성공 판정 | HTTP 2xx 응답 |
 | 서명 방식 | HMAC-SHA256 |
-| 실패 시 | 로그 기록, 수동 재전송 가능 |
+| 실패 시 | 일시적 오류 자동 재시도, 로그·수동 재전송 제공 |
 
 ---
 
@@ -52,6 +52,7 @@
 
 ```json
 {
+  "id": "webhook-event-uuid",
   "event": "test",
   "timestamp": "2025-01-06T10:00:00",
   "data": {
@@ -70,7 +71,7 @@
 
 | 이벤트 | 설명 | 발생 시점 |
 |--------|------|----------|
-| `contract.sent` | 계약서 발송됨 | 참여자에게 발송될 때 |
+| `contract.sent` | 계약 발송/활성화됨 | 참여자별로 계약이 발송되거나 서명 링크를 사용할 수 있게 될 때 |
 | `contract.viewed` | 계약서 열람됨 | 참여자가 처음 열람할 때 |
 | `participant.signed` | 참여자 서명 완료 | 개별 참여자가 서명할 때 |
 | `participant.declined` | 참여자 서명 거절 | 참여자가 서명을 거절할 때 |
@@ -94,13 +95,18 @@
 
 ```json
 {
+  "id": "webhook-event-uuid",
   "event": "이벤트_타입",
   "timestamp": "2025-01-06T10:00:00",
   "data": { }
 }
 ```
 
-`timestamp`와 `*_at` 시각 필드는 UTC 기준입니다. 모든 이벤트의 `data`에는 `contract_id`, `title`, `responsible_permission_group: { uuid, name }`이 포함됩니다.
+`id`는 이벤트의 고유 ID이며 자동·수동 재전송에도 바뀌지 않습니다. `timestamp`와 `*_at` 시각 필드는 UTC 기준입니다. 계약 이벤트의 `data`에는 `contract_id`, `title`, `dispatch_mode`, `responsible_permission_group: { uuid, name }`이 포함됩니다.
+
+참여자 정보에는 `participant_id`, `name`, `email`, `phone`, `signing_order`, `security_method`가 포함되며 이메일은 없을 수 있습니다.
+
+`security_method`는 `email`, `phone`, `password`, `identity_verification` 중 하나입니다. `phone`은 계약 요청자가 입력한 연락처입니다.
 
 링크서명 완료 시 `participant.signed` 다음 `contract.completed`가 발행됩니다. 두 이벤트의 `data`에만 다음 참조가 추가되며 링크 토큰과 URL은 포함되지 않습니다. 링크 생성·일시중지·재개·종료·만료 이벤트는 제공하지 않습니다.
 
@@ -122,16 +128,18 @@
 
 ```json
 {
+  "id": "webhook-event-uuid",
   "event": "contract.sent",
   "timestamp": "2025-01-06T10:00:00",
   "data": {
     "contract_id": "uuid-string",
     "title": "업무 위탁 계약서",
+    "dispatch_mode": "external",
     "sent_at": "2025-01-06T10:00:00",
     "expires_at": "2025-01-31T23:59:59",
     "participants": [
-      { "name": "홍길동", "email": "hong@example.com", "security_method": "identity_verification" },
-      { "name": "김철수", "email": "kim@example.com", "security_method": "password" }
+      { "participant_id": "participant-uuid-1", "name": "홍길동", "email": null, "phone": "010-1234-5678", "signing_order": 1, "security_method": "phone" },
+      { "participant_id": "participant-uuid-2", "name": "김철수", "email": "kim@example.com", "phone": null, "signing_order": 2, "security_method": "password" }
     ]
   }
 }
@@ -143,12 +151,14 @@
 
 ```json
 {
+  "id": "webhook-event-uuid",
   "event": "contract.viewed",
   "timestamp": "2025-01-06T11:00:00",
   "data": {
     "contract_id": "uuid-string",
     "title": "업무 위탁 계약서",
-    "participant": { "name": "홍길동", "email": "hong@example.com", "security_method": "identity_verification" },
+    "dispatch_mode": "external",
+    "participant": { "participant_id": "participant-uuid-1", "name": "홍길동", "email": null, "phone": "010-1234-5678", "signing_order": 1, "security_method": "phone" },
     "viewed_at": "2025-01-06T11:00:00"
   }
 }
@@ -160,12 +170,14 @@
 
 ```json
 {
+  "id": "webhook-event-uuid",
   "event": "participant.signed",
   "timestamp": "2025-01-06T14:30:00",
   "data": {
     "contract_id": "uuid-string",
     "title": "업무 위탁 계약서",
-    "participant": { "name": "홍길동", "email": "hong@example.com", "security_method": "identity_verification" },
+    "dispatch_mode": "external",
+    "participant": { "participant_id": "participant-uuid-1", "name": "홍길동", "email": null, "phone": "010-1234-5678", "signing_order": 1, "security_method": "phone" },
     "signed_at": "2025-01-06T14:30:00",
     "all_signed": false,
     "signed_count": 1,
@@ -182,12 +194,14 @@
 
 ```json
 {
+  "id": "webhook-event-uuid",
   "event": "participant.declined",
   "timestamp": "2025-01-06T14:30:00",
   "data": {
     "contract_id": "uuid-string",
     "title": "업무 위탁 계약서",
-    "participant": { "name": "홍길동", "email": "hong@example.com", "security_method": "identity_verification" },
+    "dispatch_mode": "external",
+    "participant": { "participant_id": "participant-uuid-1", "name": "홍길동", "email": null, "phone": "010-1234-5678", "signing_order": 1, "security_method": "phone" },
     "reason": "계약 조건에 동의하지 않습니다.",
     "declined_at": "2025-01-06T14:30:00"
   }
@@ -200,15 +214,17 @@
 
 ```json
 {
+  "id": "webhook-event-uuid",
   "event": "contract.completed",
   "timestamp": "2025-01-06T15:00:00",
   "data": {
     "contract_id": "uuid-string",
     "title": "업무 위탁 계약서",
+    "dispatch_mode": "external",
     "completed_at": "2025-01-06T15:00:00",
     "participants": [
-      { "name": "홍길동", "email": "hong@example.com", "security_method": "identity_verification", "signed_at": "2025-01-06T14:30:00" },
-      { "name": "김철수", "email": "kim@example.com", "security_method": "password", "signed_at": "2025-01-06T15:00:00" }
+      { "participant_id": "participant-uuid-1", "name": "홍길동", "email": null, "phone": "010-1234-5678", "signing_order": 1, "security_method": "phone", "signed_at": "2025-01-06T14:30:00" },
+      { "participant_id": "participant-uuid-2", "name": "김철수", "email": "kim@example.com", "phone": null, "signing_order": 2, "security_method": "password", "signed_at": "2025-01-06T15:00:00" }
     ],
     "download_url": "https://..."
   }
@@ -217,19 +233,19 @@
 
 > `download_url`은 서명된 계약서 PDF의 1시간 유효 임시 URL입니다.
 
-> `security_method`는 참여자에게 설정된 서명 보안 수단입니다. 값은 `password`, `identity_verification`, `null` 중 하나이며, 웹훅에는 휴대폰 번호, 본인인증 결과 식별자, CI 해시, PG 거래 ID, 인증된 휴대폰 번호 등 민감한 인증 결과값이 포함되지 않습니다.
-
 ---
 
 ### contract.cancelled
 
 ```json
 {
+  "id": "webhook-event-uuid",
   "event": "contract.cancelled",
   "timestamp": "2025-01-06T12:00:00",
   "data": {
     "contract_id": "uuid-string",
     "title": "업무 위탁 계약서",
+    "dispatch_mode": "external",
     "cancelled_at": "2025-01-06T12:00:00",
     "reason": "고객 요청으로 취소"
   }
@@ -242,11 +258,13 @@
 
 ```json
 {
+  "id": "webhook-event-uuid",
   "event": "contract.expired",
   "timestamp": "2025-01-31T23:59:59",
   "data": {
     "contract_id": "uuid-string",
     "title": "업무 위탁 계약서",
+    "dispatch_mode": "external",
     "expired_at": "2025-01-31T23:59:59"
   }
 }
@@ -307,13 +325,7 @@ function verifyWebhook(payloadBody, signature, secret) {
 
 - HTTPS 엔드포인트 사용
 - **즉시 200 OK 응답** 후 비동기로 이벤트 처리 (5초 타임아웃 초과 방지)
-- 서명 검증 필수
 - 같은 이벤트가 다시 들어와도 한 번만 반영되도록 중복 처리
-- 시크릿 키는 환경 변수로 관리, 코드에 하드코딩 금지
-
-### 재시도
-
-자동 재시도는 제공되지 않습니다. 실패한 웹훅은 콘솔의 웹훅 로그에서 확인 후 **수동 재전송**할 수 있습니다.
 
 ---
 
@@ -428,9 +440,9 @@ app.listen(3000, () => console.log('Webhook server running on port 3000'));
 |------|----------|
 | 웹훅 미수신 | URL이 HTTPS인지 확인, 방화벽 설정, 콘솔 로그에서 발송 상태 확인, 테스트 버튼으로 연결 확인 |
 | 서명 검증 실패 | 올바른 시크릿 사용 중인지 확인, raw body (파싱 전 원본) 사용 여부 확인, 필요시 시크릿 재생성 |
-| 중복 이벤트 수신 | 같은 계약 ID, 이벤트 타입, 이벤트 시각 조합이 이미 처리됐는지 확인 |
+| 중복 이벤트 수신 | payload의 `id`가 이미 처리됐는지 확인 |
 
 ---
 
-*최종 수정: 2026-07-23*
-*문서 버전: 1.7*
+*최종 수정: 2026-09-04*
+*문서 버전: 1.8*
