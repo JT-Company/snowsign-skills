@@ -47,6 +47,7 @@ description: 스노우싸인 Public API, Hosted Embed, 웹훅 연동을 분석·
 - 템플릿 기반 또는 PDF 업로드 기반 계약/템플릿 생성 플로우 설계
 - 1인 템플릿 기반 링크서명 생성·관리와 완료 계약 수집 플로우 설계
 - 계약 완료, 취소, 만료, 참여자 서명 이벤트를 웹훅으로 받아 후속 업무 자동화
+- 서명자별 파일 요청과 완료 후 제출 파일 회수·보관 흐름 설계
 - 내부 DB 상태와 스노우싸인 계약 상태 동기화
 - 워크플로우 자동화 스크립트, 배치, 큐/잡 처리 설계
 - API Key, Webhook Secret, 로그, 재처리, 중복 이벤트, 장애 대응 정책 설계
@@ -104,6 +105,7 @@ description: 스노우싸인 Public API, Hosted Embed, 웹훅 연동을 분석·
 - 템플릿을 쓰는가, 업로드 PDF로 계약/템플릿을 생성하는가
 - 한 링크로 여러 사람이 각각 계약을 완료하는 링크서명이 필요한가. 최대 제출 수, 만료일, 본인인증, 일시중지·종료 정책은 무엇인가
 - 참여자 역할, 서명 순서, 보안 수단, 이메일·서명 언어, 만료일 정책은 무엇인가. 언어 기본값과 템플릿 상속도 정했는가
+- 서명자별 제출 파일명·필수 여부와 완료 후 다운로드·보관 주체는 누구인가
 - 완료/취소/거절/만료 후 내부 시스템 상태는 어떻게 바뀌는가
 - PDF/감사추적인증서는 저장하는가, 링크만 노출하는가
 - 실패/중복/재시도/부분 성공을 어떻게 처리할 것인가. 계약 이메일 전달 실패·반송·수신거부를 어떻게 조회·표시할 것인가
@@ -162,6 +164,8 @@ description: 스노우싸인 Public API, Hosted Embed, 웹훅 연동을 분석·
 - 같은 업무를 하나만 열게 할지, 새로고침/재시도마다 새 iframe을 허용할지에 따라 `external_id`/`reference_id` 정책을 정한다.
 - 템플릿 계약은 `GET /templates/{template_id}`로 역할명, 역할별 `locale`, 변수와 보안 수단을 먼저 확인한다. 비밀번호 역할에는 `security: { method: "password", value: "..." }`, 간편인증 역할에는 휴대전화번호가 필요하다.
 - 링크서명은 템플릿 응답의 `can_create_link_signing`이 `true`인 1인 서명 템플릿만 사용하고, 응답의 `template_id`를 `template_uuid`로 전달한다.
+- PDF 계약은 `participants[].attachment_requirements`, 템플릿은 `signers[].attachment_requirements`로 파일 요청을 최대 5개 설정한다. 템플릿 계약의 참여자 배열은 생략 시 역할 기본값을 사용하고, 지정 시 대체하며, `[]`이면 제거한다.
+- 제출 파일은 완료 계약에서 `GET /contracts/{id}/attachments`로 조회한다. 다운로드 URL은 1시간 유효하고 Hosted Embed의 postMessage나 웹훅에는 포함되지 않는다.
 - 일반 계약 목록에는 링크서명 계약이 포함되지 않으므로 링크별 완료 계약 API를 별도 동기화하고, 반환된 `contract_id`로 상세·상태·문서를 조회한다.
 - 링크서명 생성·수정·일시중지·재개·종료 권한과 확인 UX를 설계한다. 종료는 되돌릴 수 없음을 명시한다.
 - PDF 기반 생성은 `POST /uploads`로 업로드 세션을 만들고 업로드 완료 후 `document_upload_id`를 계약/템플릿 생성 API에 전달한다.
@@ -201,6 +205,7 @@ description: 스노우싸인 Public API, Hosted Embed, 웹훅 연동을 분석·
 - Hosted Embed 세션 발급, iframe 표시, postMessage 이벤트, 요청 ID 재사용 정책이 필요할 때
 - 템플릿 `signers`, `variables`, `signature_fields` 구조를 확인할 때
 - 링크서명 생성·관리 필드, 완료 계약 조회, 일반 계약 목록과의 분리 범위를 확인할 때
+- 파일 요청 설정과 완료 계약의 제출 파일 조회·다운로드 구조가 필요할 때
 - 웹훅 이벤트 타입, payload, 헤더, 서명 검증 방식이 필요할 때
 - 에러 코드, 상태값, rate limit, 샘플 구현이 필요할 때
 

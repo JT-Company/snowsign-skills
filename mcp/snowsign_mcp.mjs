@@ -7,16 +7,17 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 
 const SERVER_NAME = "snowsign";
-const SERVER_VERSION = "0.8.0";
+const SERVER_VERSION = "0.9.0";
 const DEFAULT_BASE_URL = "https://api-snowsign.jtsnowball.com/public/v1";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const apiGuidePath = path.join(repoRoot, "skills", "snowsign-integration-architect", "references", "public-api-guide.md");
 const hostedEmbedGuidePath = path.join(repoRoot, "skills", "snowsign-integration-architect", "references", "hosted-embed-guide.md");
 const webhookGuidePath = path.join(repoRoot, "skills", "snowsign-integration-architect", "references", "webhook-guide.md");
-const SIGNATURE_FIELD_POLICY = "signature_fields는 PDF.js getViewport({ scale: 1 }) 기준 pixel 좌표를 사용합니다. is_required 생략 시 true이며 signature/stamp/name은 항상 true, variable은 항상 false, text/date/checkbox만 false 지정 가능합니다. text_align은 left/center/right 중 하나이며 name/text/date 필드와 텍스트/날짜 variable에만 적용됩니다. 날짜 필드/날짜 변수는 date_precision과 date_format_pattern을 사용할 수 있습니다.";
+const SIGNATURE_FIELD_POLICY = "signature_fields는 PDF.js getViewport({ scale: 1 }) 기준 pixel 좌표를 사용합니다. is_required 생략 시 true이며 signature/stamp/name은 항상 true, variable은 항상 false, text/date/checkbox만 false 지정 가능합니다. 같은 참여자의 checkbox 두 개 이상은 selection_group_key/mode/count로 선택 조건을 설정할 수 있습니다. text_align은 left/center/right 중 하나이며 name/text/date 필드와 텍스트/날짜 variable에만 적용됩니다. 날짜 필드/날짜 변수는 date_precision과 date_format_pattern을 사용할 수 있습니다.";
 const SCHEDULE_POLICY = "platform 계약의 scheduled_send_at은 timezone을 포함하고 초·밀리초가 0인 ISO 8601 시각이어야 하며, 현재보다 미래이고 계약 마감일보다 앞이어야 합니다.";
 const EXTERNAL_DISPATCH_POLICY = "dispatch_mode=external이면 스노우싸인이 메시지를 발송하지 않습니다. 참여자마다 email 또는 국내 휴대전화번호가 필요하며 생성 즉시 활성화되어 signing_url이 반환됩니다. phone 보안 수단은 직접 지정하지 말고, send_immediately와 scheduled_send_at은 생략한 뒤 반환된 링크를 자체 채널로 전달하세요.";
+const ATTACHMENT_REQUEST_POLICY = "participants[].attachment_requirements로 서명자별 파일 요청을 최대 5개 지정할 수 있습니다. 템플릿 계약은 생략 시 역할 기본값을 사용하고, 배열을 보내면 대체하며, []이면 제거합니다.";
 
 if (typeof fetch !== "function") {
   throw new Error("스노우싸인 MCP 서버는 Node.js 18 이상이 필요합니다.");
@@ -114,6 +115,86 @@ async function apiRequest(method, apiPath, { query, body, outputPath } = {}) {
 
 function resolvePath(filePath) {
   return path.resolve(filePath.replace(/^~(?=$|\/|\\)/, os.homedir()));
+}
+
+async function downloadRemoteFile(downloadUrl, outputPath, metadata = {}) {
+  const response = await fetch(downloadUrl, {
+    headers: { Accept: "application/pdf, image/jpeg, image/png, application/octet-stream" },
+  });
+  const buffer = Buffer.from(await response.arrayBuffer());
+
+  if (!response.ok) {
+    throw new Error(JSON.stringify({
+      status: response.status,
+      error: buffer.toString("utf8"),
+    }));
+  }
+
+  const target = resolvePath(outputPath);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, buffer);
+  return {
+    success: true,
+    ...metadata,
+    path: target,
+    bytes: buffer.length,
+    content_type: response.headers.get("content-type") || "application/octet-stream",
+  };
+}
+
+async function downloadApiFile(apiPath, outputPath) {
+  const apiResponse = await apiRequest("GET", apiPath);
+  if (!outputPath) return apiResponse;
+
+  const file = apiResponse?.data || apiResponse;
+  if (!file?.download_url) {
+    throw new Error(`다운로드 URL 응답 형식이 올바르지 않습니다: ${JSON.stringify(apiResponse)}`);
+  }
+  return downloadRemoteFile(file.download_url, outputPath, {
+    filename: file.filename,
+    expires_at: file.expires_at,
+  });
+}
+
+async function downloadContractAttachment({
+  contract_id,
+  participant_id,
+  requirement_id,
+  output_path,
+}) {
+  const apiResponse = await apiRequest(
+    "GET",
+    `/contracts/${encodeURIComponent(contract_id)}/attachments`,
+  );
+  const participants = apiResponse?.data || apiResponse;
+  if (!Array.isArray(participants)) {
+    throw new Error(`제출 파일 응답 형식이 올바르지 않습니다: ${JSON.stringify(apiResponse)}`);
+  }
+
+  const participant = participants.find((item) => item.participant_id === participant_id);
+  const requirement = participant?.requirements?.find((item) => item.uuid === requirement_id);
+  if (!participant || !requirement) {
+    throw new Error("지정한 참여자 또는 파일 요청을 찾을 수 없습니다.");
+  }
+  if (!requirement.file?.download_url) {
+    throw new Error("해당 파일 요청에 제출된 파일이 없습니다.");
+  }
+
+  const metadata = {
+    participant_id,
+    participant_name: participant.participant_name,
+    requirement_id,
+    requirement_title: requirement.title,
+    file: requirement.file,
+  };
+  if (!output_path) return { success: true, data: metadata };
+
+  return downloadRemoteFile(requirement.file.download_url, output_path, {
+    participant_id,
+    requirement_id,
+    filename: requirement.file.filename,
+    expires_at: requirement.file.expires_at,
+  });
 }
 
 async function uploadPdfFile({ file_path, purpose, filename, content_type }) {
@@ -247,7 +328,7 @@ const TOOLS = [
   },
   {
     name: "snowsign_get_contract",
-    description: "계약 상세와 참여자 연락처·상태를 조회합니다. external 계약의 participants[].signing_url도 반환하며, 서명 링크는 해당 참여자에게만 전달해야 합니다.",
+    description: "계약 상세와 참여자 연락처·상태·파일 요청 현황을 조회합니다. external 계약의 participants[].signing_url도 반환하며, 서명 링크는 해당 참여자에게만 전달해야 합니다.",
     inputSchema: objectSchema({
       contract_id: { type: "string", description: "계약 ID입니다." },
     }, ["contract_id"]),
@@ -290,7 +371,7 @@ const TOOLS = [
     name: "snowsign_create_contract_from_pdf",
     description: "업로드 PDF로 전체 업무 계약을 생성합니다. platform은 초안·즉시 발송·예약을, external은 자체 전달할 참여자별 서명 링크 생성을 지원합니다. 결재가 필요하면 APPROVAL_REQUIRED를 반환합니다.",
     inputSchema: objectSchema({
-      contract: { type: "object", description: `POST /v1/contracts 요청 본문입니다. document_upload_id, participants, signature_fields를 포함합니다. dispatch_mode 기본값은 platform입니다. ${SCHEDULE_POLICY} ${EXTERNAL_DISPATCH_POLICY} ${SIGNATURE_FIELD_POLICY}` },
+      contract: { type: "object", description: `POST /v1/contracts 요청 본문입니다. document_upload_id, participants, signature_fields를 포함합니다. dispatch_mode 기본값은 platform입니다. ${SCHEDULE_POLICY} ${EXTERNAL_DISPATCH_POLICY} ${ATTACHMENT_REQUEST_POLICY} ${SIGNATURE_FIELD_POLICY}` },
     }, ["contract"]),
   },
   {
@@ -327,19 +408,36 @@ const TOOLS = [
   },
   {
     name: "snowsign_download_contract",
-    description: "완료된 스노우싸인 계약 PDF를 다운로드합니다.",
+    description: "완료 계약 PDF의 1시간 다운로드 URL을 조회합니다. output_path를 지정하면 해당 경로에 파일을 저장합니다.",
     inputSchema: objectSchema({
       contract_id: { type: "string", description: "계약 ID입니다." },
-      output_path: { type: "string", description: "파일로 저장할 경로입니다. 생략하면 base64로 반환합니다." },
+      output_path: { type: "string", description: "저장할 로컬 파일 경로입니다. 생략하면 파일명·다운로드 URL·만료 시각을 반환합니다." },
     }, ["contract_id"]),
   },
   {
     name: "snowsign_download_audit_certificate",
-    description: "완료된 스노우싸인 계약의 감사추적인증서를 다운로드합니다.",
+    description: "완료 계약 감사추적인증서의 1시간 다운로드 URL을 조회합니다. output_path를 지정하면 해당 경로에 파일을 저장합니다.",
     inputSchema: objectSchema({
       contract_id: { type: "string", description: "계약 ID입니다." },
-      output_path: { type: "string", description: "파일로 저장할 경로입니다. 생략하면 base64로 반환합니다." },
+      output_path: { type: "string", description: "저장할 로컬 파일 경로입니다. 생략하면 파일명·다운로드 URL·만료 시각을 반환합니다." },
     }, ["contract_id"]),
+  },
+  {
+    name: "snowsign_get_contract_attachments",
+    description: "완료 계약의 참여자별 파일 요청과 제출 파일 메타데이터·1시간 다운로드 URL을 조회합니다.",
+    inputSchema: objectSchema({
+      contract_id: { type: "string", description: "완료된 계약 ID입니다." },
+    }, ["contract_id"]),
+  },
+  {
+    name: "snowsign_download_contract_attachment",
+    description: "완료 계약의 특정 제출 파일을 조회합니다. output_path를 지정하면 해당 경로에 저장하고, 생략하면 파일 메타데이터와 1시간 다운로드 URL을 반환합니다.",
+    inputSchema: objectSchema({
+      contract_id: { type: "string", description: "완료된 계약 ID입니다." },
+      participant_id: { type: "string", description: "제출 파일 목록 응답의 participant_id입니다." },
+      requirement_id: { type: "string", description: "requirements[].uuid 값입니다." },
+      output_path: { type: "string", description: "저장할 로컬 파일 경로입니다. 생략하면 다운로드 URL을 반환합니다." },
+    }, ["contract_id", "participant_id", "requirement_id"]),
   },
   {
     name: "snowsign_bulk_download_contracts",
@@ -365,24 +463,24 @@ const TOOLS = [
   },
   {
     name: "snowsign_get_template",
-    description: "스노우싸인 템플릿 상세 정보를 조회합니다. signers[].security_method는 역할별 보안 정책이고 signers[].locale은 역할의 기본 서명 언어입니다. variables[].is_required는 항상 false이고, signature_fields[].is_required는 필드 타입별 정책에 따라 정규화됩니다.",
+    description: "스노우싸인 템플릿 상세 정보를 조회합니다. signers[].security_method와 locale은 역할별 기본값이고 attachment_requirements는 계약에 적용할 파일 요청입니다. variables[].is_required는 항상 false이고, signature_fields[].is_required는 필드 타입별 정책에 따라 정규화됩니다.",
     inputSchema: objectSchema({
       template_id: { type: "string", description: "템플릿 ID입니다." },
     }, ["template_id"]),
   },
   {
     name: "snowsign_download_template",
-    description: "스노우싸인 템플릿 원본 파일을 다운로드합니다.",
+    description: "템플릿 원본 파일의 1시간 다운로드 URL을 조회합니다. output_path를 지정하면 해당 경로에 파일을 저장합니다.",
     inputSchema: objectSchema({
       template_id: { type: "string", description: "템플릿 ID입니다." },
-      output_path: { type: "string", description: "파일로 저장할 경로입니다. 생략하면 base64로 반환합니다." },
+      output_path: { type: "string", description: "저장할 로컬 파일 경로입니다. 생략하면 파일명·다운로드 URL·만료 시각을 반환합니다." },
     }, ["template_id"]),
   },
   {
     name: "snowsign_create_template_from_pdf",
     description: "업로드 PDF로 모든 멤버가 사용할 수 있는 전체 업무 템플릿을 생성합니다. 관리 그룹 필드는 전달하지 않습니다.",
     inputSchema: objectSchema({
-      template: { type: "object", description: `POST /v1/templates 요청 본문입니다. document_upload_id, signers, signature_fields를 포함합니다. ${SIGNATURE_FIELD_POLICY}` },
+      template: { type: "object", description: `POST /v1/templates 요청 본문입니다. document_upload_id, signers, signature_fields를 포함합니다. signers[].attachment_requirements로 역할별 파일 요청을 최대 5개 저장할 수 있습니다. ${SIGNATURE_FIELD_POLICY}` },
     }, ["template"]),
   },
   {
@@ -390,12 +488,12 @@ const TOOLS = [
     description: "모든 멤버가 사용할 수 있는 템플릿으로 전체 업무 계약을 생성합니다. platform은 초안·즉시 발송·예약을, external은 자체 전달할 참여자별 서명 링크 생성을 지원합니다. password 역할에는 method=password와 value를 담은 participants[].security, easy_cert 역할에는 participants[].phone이 필요합니다.",
     inputSchema: objectSchema({
       template_id: { type: "string", description: "템플릿 ID입니다." },
-      contract: { type: "object", description: `POST /v1/templates/{id}/create-contract 요청 본문입니다. dispatch_mode 기본값은 platform입니다. ${SCHEDULE_POLICY} ${EXTERNAL_DISPATCH_POLICY}` },
+      contract: { type: "object", description: `POST /v1/templates/{id}/create-contract 요청 본문입니다. dispatch_mode 기본값은 platform입니다. ${SCHEDULE_POLICY} ${EXTERNAL_DISPATCH_POLICY} ${ATTACHMENT_REQUEST_POLICY}` },
     }, ["template_id", "contract"]),
   },
   {
     name: "snowsign_create_link_signing",
-    description: "모든 멤버가 사용할 수 있는 1인 템플릿으로 전체 업무 관리 그룹의 링크서명을 생성합니다. can_create_link_signing을 확인하고 반환된 link_url만 공유합니다.",
+    description: "모든 멤버가 사용할 수 있는 1인 템플릿으로 전체 업무 관리 그룹의 링크서명을 생성합니다. 템플릿 역할의 파일 요청이 모든 서명 계약에 적용됩니다. can_create_link_signing을 확인하고 반환된 link_url만 공유합니다.",
     inputSchema: objectSchema({
       template_uuid: { type: "string", description: "템플릿 조회 응답의 template_id입니다." },
       name: { type: "string", minLength: 1, maxLength: 200, description: "링크서명 관리 이름입니다." },
@@ -582,10 +680,16 @@ async function callTool(name, args) {
     return jsonText(await apiRequest("POST", `/contracts/${encodeURIComponent(args.contract_id)}/remind`, { body }));
   }
   if (name === "snowsign_download_contract") {
-    return jsonText(await apiRequest("GET", `/contracts/${encodeURIComponent(args.contract_id)}/download`, { outputPath: args.output_path }));
+    return jsonText(await downloadApiFile(`/contracts/${encodeURIComponent(args.contract_id)}/download`, args.output_path));
   }
   if (name === "snowsign_download_audit_certificate") {
-    return jsonText(await apiRequest("GET", `/contracts/${encodeURIComponent(args.contract_id)}/audit-certificate`, { outputPath: args.output_path }));
+    return jsonText(await downloadApiFile(`/contracts/${encodeURIComponent(args.contract_id)}/audit-certificate`, args.output_path));
+  }
+  if (name === "snowsign_get_contract_attachments") {
+    return jsonText(await apiRequest("GET", `/contracts/${encodeURIComponent(args.contract_id)}/attachments`));
+  }
+  if (name === "snowsign_download_contract_attachment") {
+    return jsonText(await downloadContractAttachment(args));
   }
   if (name === "snowsign_bulk_download_contracts") {
     return jsonText(await apiRequest("POST", "/contracts/bulk-download", { body: { contract_ids: args.contract_ids } }));
@@ -596,7 +700,7 @@ async function callTool(name, args) {
   if (name === "snowsign_list_templates") return jsonText(await apiRequest("GET", "/templates", { query: args }));
   if (name === "snowsign_get_template") return jsonText(await apiRequest("GET", `/templates/${encodeURIComponent(args.template_id)}`));
   if (name === "snowsign_download_template") {
-    return jsonText(await apiRequest("GET", `/templates/${encodeURIComponent(args.template_id)}/download`, { outputPath: args.output_path }));
+    return jsonText(await downloadApiFile(`/templates/${encodeURIComponent(args.template_id)}/download`, args.output_path));
   }
   if (name === "snowsign_create_template_from_pdf") {
     return jsonText(await apiRequest("POST", "/templates", { body: args.template }));
@@ -696,7 +800,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "스노우싸인 MCP 도구로 일반 계약, 자체 채널로 전달할 external 계약과 링크서명을 조회·운영하세요. API Key는 조직 자격증명이며 생성 리소스는 전체 업무에 속하고 템플릿은 모든 멤버가 사용할 수 있는 항목만 사용합니다. 상태 변경과 계약 생성은 실행 전 사용자 의도를 확인하세요. platform 계약은 이메일이 필요하고 초안·즉시 발송·예약을 지원합니다. external 계약은 참여자마다 이메일 또는 국내 휴대전화번호를 받고 send_immediately와 scheduled_send_at을 생략해 생성하세요. 생성 응답이나 계약 상세의 participants[].signing_url을 자체 문자·알림톡으로 전달하며 스노우싸인 발송·예약·리마인더 도구는 사용하지 않습니다. APPROVAL_REQUIRED이면 자동 상신하지 말고 내부 앱에서 결재가 필요하다고 안내하세요. 결과에서는 dispatch_mode, approval_status, scheduled_send_at, schedule_failure_code를 확인하세요. 링크서명 결과에서는 link_url만 공유하고, 일반 계약 목록에는 링크서명 계약이 포함되지 않음을 기억하세요.",
+            text: "스노우싸인 MCP 도구로 일반 계약, 자체 채널로 전달할 external 계약과 링크서명을 조회·운영하세요. API Key는 조직 자격증명이며 생성 리소스는 전체 업무에 속하고 템플릿은 모든 멤버가 사용할 수 있는 항목만 사용합니다. 상태 변경과 계약 생성은 실행 전 사용자 의도를 확인하세요. platform 계약은 이메일이 필요하고 초안·즉시 발송·예약을 지원합니다. external 계약은 참여자마다 이메일 또는 국내 휴대전화번호를 받고 send_immediately와 scheduled_send_at을 생략해 생성하세요. 생성 응답이나 계약 상세의 participants[].signing_url을 자체 문자·알림톡으로 전달하며 스노우싸인 발송·예약·리마인더 도구는 사용하지 않습니다. 파일 요청은 PDF 계약 참여자 또는 템플릿 역할에 설정하고, 제출 파일은 완료 계약에서만 조회·다운로드하세요. APPROVAL_REQUIRED이면 자동 상신하지 말고 내부 앱에서 결재가 필요하다고 안내하세요. 결과에서는 dispatch_mode, approval_status, scheduled_send_at, schedule_failure_code를 확인하세요. 링크서명 결과에서는 link_url만 공유하고, 일반 계약 목록에는 링크서명 계약이 포함되지 않음을 기억하세요.",
           },
         }],
       };
@@ -709,7 +813,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "snowsign_get_api_reference_section 도구로 필요한 API 섹션을 확인한 뒤 연동 코드를 작성하세요. API Key는 조직 자격증명이며 생성 리소스는 관리 그룹 입력 없이 전체 업무에 속합니다. 템플릿은 모든 멤버가 사용할 수 있는 항목만 조회·사용하고, 결재가 필요한 발송은 APPROVAL_REQUIRED로 중단됩니다. 외부 PDF는 업로드 후 document_upload_id로 전달하고 signature_fields는 PDF.js scale 1 좌표를 씁니다. platform 계약은 참여자 이메일이 필요하고 초안·즉시 발송·예약을 지원합니다. 자체 문자·알림톡으로 링크를 보낼 때는 dispatch_mode=external과 참여자 이메일 또는 국내 휴대전화번호를 전달합니다. external 계약은 생성 즉시 활성화되고 participants[].signing_url을 반환하며 예약·플랫폼 발송·리마인더를 사용하지 않습니다. 계약 응답의 dispatch_mode, approval_status, scheduled_send_at, schedule_failure_code를 반영하고 external 링크는 생성 응답 또는 계약 상세에서 확인하세요. 링크서명 완료 계약은 일반 계약 목록과 분리해 조회합니다.",
+            text: "snowsign_get_api_reference_section 도구로 필요한 API 섹션을 확인한 뒤 연동 코드를 작성하세요. API Key는 조직 자격증명이며 생성 리소스는 관리 그룹 입력 없이 전체 업무에 속합니다. 템플릿은 모든 멤버가 사용할 수 있는 항목만 조회·사용하고, 결재가 필요한 발송은 APPROVAL_REQUIRED로 중단됩니다. 외부 PDF는 업로드 후 document_upload_id로 전달하고 signature_fields는 PDF.js scale 1 좌표를 씁니다. 파일 요청은 participants[] 또는 signers[]의 attachment_requirements로 설정하고 완료 계약의 /attachments에서 제출 파일을 회수합니다. platform 계약은 참여자 이메일이 필요하고 초안·즉시 발송·예약을 지원합니다. 자체 문자·알림톡으로 링크를 보낼 때는 dispatch_mode=external과 참여자 이메일 또는 국내 휴대전화번호를 전달합니다. external 계약은 생성 즉시 활성화되고 participants[].signing_url을 반환하며 예약·플랫폼 발송·리마인더를 사용하지 않습니다. 계약 응답의 dispatch_mode, approval_status, scheduled_send_at, schedule_failure_code를 반영하고 external 링크는 생성 응답 또는 계약 상세에서 확인하세요. 링크서명 완료 계약은 일반 계약 목록과 분리해 조회합니다.",
           },
         }],
       };
@@ -722,7 +826,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "snowsign_get_hosted_embed_guide_section 도구로 필요한 Hosted Embed 섹션을 확인하세요. 외부 서버가 flows와 allowed_origins로 iframe_url을 발급하고 브라우저에는 API Key 없이 iframe_url만 전달합니다. iframe은 전체 업무 범위에서 동작하고 모든 멤버가 사용할 수 있는 템플릿만 표시하며, 결재가 필요한 즉시 발송은 오류로 중단됩니다. iframe 내부 exchange API는 직접 호출하지 않습니다.",
+            text: "snowsign_get_hosted_embed_guide_section 도구로 필요한 Hosted Embed 섹션을 확인하세요. 외부 서버가 flows와 allowed_origins로 iframe_url을 발급하고 브라우저에는 API Key 없이 iframe_url만 전달합니다. iframe은 전체 업무 범위에서 동작하고 모든 멤버가 사용할 수 있는 템플릿만 표시하며, 결재가 필요한 즉시 발송은 오류로 중단됩니다. iframe 내부 exchange API는 직접 호출하지 않습니다. 서명자 제출 파일은 postMessage에 포함되지 않으므로 완료 후 Public API로 조회합니다.",
           },
         }],
       };

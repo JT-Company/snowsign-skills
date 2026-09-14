@@ -18,6 +18,7 @@
   - [계약서 취소](#계약서-취소)
   - [리마인더 발송](#리마인더-발송)
   - [계약서 다운로드](#계약서-다운로드)
+  - [제출 파일 조회 및 다운로드](#제출-파일-조회-및-다운로드)
   - [감사추적인증서 다운로드](#감사추적인증서-다운로드)
   - [계약서 일괄 다운로드](#계약서-일괄-다운로드)
   - [감사추적인증서 일괄 다운로드](#감사추적인증서-일괄-다운로드)
@@ -93,6 +94,7 @@ X-API-Key: YOUR_API_KEY
 | POST | [/v1/contracts/{id}/cancel](#계약서-취소) | 계약서 취소 |
 | POST | [/v1/contracts/{id}/remind](#리마인더-발송) | 리마인더 이메일 발송 |
 | GET | [/v1/contracts/{id}/download](#계약서-다운로드) | 완료된 계약서 PDF 다운로드 |
+| GET | [/v1/contracts/{id}/attachments](#제출-파일-조회-및-다운로드) | 완료된 계약의 제출 파일과 다운로드 URL 조회 |
 | GET | [/v1/contracts/{id}/audit-certificate](#감사추적인증서-다운로드) | 감사추적인증서 다운로드 |
 | POST | [/v1/contracts/bulk-download](#계약서-일괄-다운로드) | 여러 계약서 PDF 일괄 다운로드 |
 | POST | [/v1/contracts/bulk-audit-certificates](#감사추적인증서-일괄-다운로드) | 감사추적인증서 일괄 다운로드 |
@@ -218,9 +220,20 @@ flows:
 | `scheduled_send_at` | 생성, 발송, 목록, 상세, 상태 | 예약 발송 시각. 예약되지 않았으면 `null` |
 | `schedule_failure_code` | 생성, 발송, 목록, 상세, 상태 | 예약 실행 실패 코드. 실패하지 않았으면 `null` |
 | `link_signing` | 상세, 상태 | 링크서명으로 생성된 계약에만 `{ id, name }` 포함 |
+| `participants[].attachment_requirements` | 상세 | 파일 요청과 제출 현황. 파일 메타데이터는 계약 완료 후 포함 |
 | `participants[].email_delivery.failure_reason` | 상세 | SMTP 원문과 수신자 주소를 제외한 표준 전달 실패 사유 |
 
 예약 실행 실패 코드는 `approval_required`, `subscription_required`, `payment_past_due`, `quota_exceeded`, `authorization_failed`, `resource_invalid`, `system_error` 중 하나입니다.
+
+**파일 요청**
+
+PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requirements`를 지정하면 서명자는 서명 화면에서 PDF·JPG(JPEG)·PNG 파일을 항목당 하나 제출할 수 있습니다. 항목은 최대 5개이며 다음 형식입니다.
+
+```json
+{ "title": "신분증", "description": "주민번호 뒷자리를 가려 주세요.", "is_required": true }
+```
+
+템플릿에 저장한 파일 요청은 그 템플릿으로 만드는 계약에 자동 적용됩니다. 템플릿 기반 단건 계약시에는 `attachment_requirements`를 수정해 이번 계약의 요청만 변경할 수 있습니다. 생략하면 템플릿 설정을 그대로 사용하고, 새 배열을 보내면 그 내용으로 바꾸며, `[]`를 보내면 파일을 요청하지 않습니다. 대량 발송/링크서명은 템플릿 설정을 모든 계약에 동일하게 적용합니다.
 
 ### 계약서 목록 조회
 
@@ -397,7 +410,7 @@ flows:
 | participants | array | Y | 참여자 목록 (역할 매핑) |
 | variables | object | N | 템플릿 변수 값. 텍스트 변수는 문자열, 날짜 변수는 ISO 날짜/연월 문자열, 체크박스 변수는 boolean |
 | signing_order | string | N | 서명 순서 (템플릿 기본값 사용 시 생략) |
-| send_immediately | boolean | N | `platform` 계약을 생성 후 즉시 발송. 기본값 `false` |
+| send_immediately | boolean | N | `true`이면 계약 생성 후 즉시 발송. 기본값 `false` |
 | scheduled_send_at | string | N | 예약 발송 시각. timezone을 포함한 ISO 8601 형식 |
 | message | string | N | 발송 시 참여자에게 전달할 메시지 |
 
@@ -410,6 +423,7 @@ flows:
 | phone | string | 조건부 | 전화번호 확인·간편인증 또는 이메일 없는 직접 발송 참여자이면 필수 |
 | mobile_alimtalk_enabled | boolean | N | 모바일 알림톡 발송 여부. 생략 시 템플릿 역할 정책 사용 |
 | locale | string | N | `ko` 또는 `en`. 생략 시 템플릿 역할 언어 사용 |
+| attachment_requirements | array | N | 생략 시 템플릿 역할 기본값 사용. 지정 시 대체, `[]`이면 제거 |
 | role | string | Y | 템플릿에 정의된 역할명 (예: "근로자", "회사") |
 | security | object | 조건부 | 보통 생략. 템플릿의 비밀번호 인증이 있는 역할에는 `{ "method": "password", "value": "..." }` 필요 |
 
@@ -457,7 +471,7 @@ flows:
 
 #### 자체 문자·알림톡으로 서명 링크 보내기
 
-위 요청에서 `dispatch_mode`를 `external`로 설정하면 계약이 즉시 시작됩니다.
+위 요청에서 `dispatch_mode`를 `external`로 설정합니다.
 참여자 연락처는 `email`, `phone` 중 하나 이상을 입력합니다.
 스노우싸인은 참여자에게 메시지를 보내지 않고 서명 링크를 반환합니다.
 서명 예약 기능은 이용할 수 없습니다.
@@ -552,7 +566,7 @@ flows:
 
 `POST /v1/contracts`
 
-업로드 PDF와 필드 위치 정보로 계약서를 생성합니다. `platform` 계약은 즉시 발송하거나 예약하지 않으면 초안으로 생성됩니다.
+업로드 PDF와 필드 위치 정보로 계약서를 생성합니다. 즉시 발송하거나 예약하지 않으면 초안으로 생성됩니다.
 
 **Request Body 주요 필드**
 
@@ -561,7 +575,7 @@ flows:
 | title | string | Y | 계약서 제목 |
 | document_upload_id | string | Y | 업로드 세션 ID |
 | dispatch_mode | string | N | 링크 전달 방식. 기본 `platform` |
-| send_immediately | boolean | N | `platform` 계약을 생성 후 즉시 발송. 기본값 false |
+| send_immediately | boolean | N | true이면 계약 생성 후 즉시 발송. 기본값 false |
 | scheduled_send_at | string | N | 예약 발송 시각. timezone을 포함한 ISO 8601 형식 |
 | participants | array | Y | 참여자 목록 |
 | signature_fields | array | Y | 입력칸/서명칸 위치 목록 |
@@ -573,6 +587,8 @@ flows:
 `signature_fields` 좌표는 PDF.js `getViewport({ scale: 1 })` 기준 pixel 좌표입니다. 원점은 페이지 좌상단이며, `page_number`는 1부터 시작합니다.
 
 **signature_fields 항목 주요 필드**
+
+일반 체크박스는 같은 참여자의 두 개 이상을 `selection_group_key`(64자 이하)로 묶을 수 있습니다. 구성원마다 `selection_group_mode`(`at_least`·`exactly`·`at_most`)와 `selection_group_count`(1~구성원 수 정수)를 동일하게 전달합니다. 그룹 필드는 개별 필수 여부 대신 그룹 조건을 적용하며 `is_required=false`로 저장됩니다. 그룹이 없으면 세 속성을 생략하거나 모두 null로 보냅니다. PDF 템플릿 생성·상세 조회도 같은 속성을 지원하고, 템플릿 기반 계약은 이를 상속합니다.
 
 | 필드 | 타입 | 필수 | 설명 |
 |------|------|------|------|
@@ -663,7 +679,7 @@ flows:
 }
 ```
 
-`platform` 계약에서 `send_immediately=true`와 `scheduled_send_at`은 함께 지정할 수 없습니다. 둘 다 생략하면 초안으로 생성됩니다.
+`send_immediately=true`와 `scheduled_send_at`은 함께 지정할 수 없습니다. 둘 다 생략하면 초안으로 생성됩니다.
 
 ### 계약서 발송
 
@@ -768,6 +784,48 @@ flows:
 ```
 
 > ⚠️ 계약서 상태가 `completed`인 경우에만 다운로드 가능합니다.
+
+---
+
+### 제출 파일 조회 및 다운로드
+
+`GET /v1/contracts/{contract_id}/attachments`
+
+완료된 계약의 참여자별 파일 요청과 제출 파일 정보를 반환합니다. 제출 파일의 다운로드 URL은 1시간 동안 유효하며, 파일 요청이 없으면 빈 배열을 반환합니다.
+
+**Response**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "participant_id": "participant-uuid",
+      "participant_name": "홍길동",
+      "requirements": [
+        {
+          "uuid": "requirement-uuid",
+          "title": "신분증",
+          "description": "주민번호 뒷자리를 가려 주세요.",
+          "is_required": true,
+          "has_file": true,
+          "file": {
+            "upload_id": "upload-uuid",
+            "filename": "id-card.jpg",
+            "content_type": "image/jpeg",
+            "size_bytes": 125000,
+            "uploaded_at": "2026-06-12T12:00:00Z",
+            "download_url": "https://...",
+            "expires_at": "2026-06-12T13:00:00Z"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+계약 상태가 `completed`인 경우에만 사용할 수 있으며, 파일을 제출하지 않은 항목은 `has_file: false`, `file: null`로 반환됩니다.
 
 ---
 
@@ -1082,6 +1140,7 @@ flows:
 | `signers[].security_method` | `email`, `password`, `easy_cert`. 값이 없으면 `email` |
 | `signers[].mobile_alimtalk_enabled` | 역할 기반 계약의 알림톡 기본값 |
 | `signers[].locale` | 역할의 기본 이메일·서명 화면 언어 |
+| `signers[].attachment_requirements` | 역할에 저장된 파일 요청 기본값 |
 | `signature_fields` | 변수 필드를 제외한 서명자 입력 필드 |
 | `signature_fields[].is_required` | 서명·인감·이름은 항상 `true`; 텍스트·날짜·체크박스는 저장값 |
 | `variables` | 동일한 변수명을 하나로 합친 변수 목록 |
