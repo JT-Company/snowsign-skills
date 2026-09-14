@@ -92,7 +92,7 @@ X-API-Key: YOUR_API_KEY
 | POST | [/v1/contracts](#pdf-계약서-생성) | 업로드 PDF 기반 계약서 생성. `send_immediately=true`이면 즉시 발송 |
 | POST | [/v1/contracts/{id}/send](#계약서-발송) | 계약서 발송 |
 | POST | [/v1/contracts/{id}/cancel](#계약서-취소) | 계약서 취소 |
-| POST | [/v1/contracts/{id}/remind](#리마인더-발송) | 리마인더 이메일 발송 |
+| POST | [/v1/contracts/{id}/remind](#리마인더-발송) | 리마인더 발송 |
 | GET | [/v1/contracts/{id}/download](#계약서-다운로드) | 완료된 계약서 PDF 다운로드 |
 | GET | [/v1/contracts/{id}/attachments](#제출-파일-조회-및-다운로드) | 완료된 계약의 제출 파일과 다운로드 URL 조회 |
 | GET | [/v1/contracts/{id}/audit-certificate](#감사추적인증서-다운로드) | 감사추적인증서 다운로드 |
@@ -222,8 +222,25 @@ flows:
 | `link_signing` | 상세, 상태 | 링크서명으로 생성된 계약에만 `{ id, name }` 포함 |
 | `participants[].attachment_requirements` | 상세 | 파일 요청과 제출 현황. 파일 메타데이터는 계약 완료 후 포함 |
 | `participants[].email_delivery.failure_reason` | 상세 | SMTP 원문과 수신자 주소를 제외한 표준 전달 실패 사유 |
+| `participants[].delivery_channels` | 상세 | 플랫폼 계약의 발송 수단. 외부 전달은 `null` |
+| `participants[].alimtalk_delivery` | 상세 | 최근 알림톡 결과 `{ outcome, purpose, attempted_at, failure_reason }`. 발송 이력이 없으면 `null` |
 
 예약 실행 실패 코드는 `approval_required`, `subscription_required`, `payment_past_due`, `quota_exceeded`, `authorization_failed`, `resource_invalid`, `system_error` 중 하나입니다.
+
+**계약 생성 `participants[]` 공통 필드**
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| `role` | string | 조건부 | 역할 단축값. `key`, `role_name`을 직접 지정하지 않을 때 사용 |
+| `key` | string | 조건부 | 참여자를 안정적으로 식별하는 값. PDF 계약의 `signature_fields[].participant_key`와 연결 |
+| `role_name` | string | 조건부 | 참여자 역할명. 보통 `role`만 지정하면 됨 |
+| `name` | string | Y | 참여자 이름 |
+| `email` | string 또는 null | 조건부 | 이메일 발송을 선택하거나 외부 전달에 휴대전화번호가 없으면 필수 |
+| `phone` | string | 조건부 | 알림톡·간편인증을 선택하거나 외부 전달에 이메일이 없으면 국내 010 휴대전화번호 필수 |
+| `delivery_channels` | string[] | N | 플랫폼 발송 수단. `email`, `alimtalk` 중 하나 이상 지정. 둘 다 발송하려면 `["email", "alimtalk"]`. 외부 전달에서는 생략 |
+| `security` | object | N | 비밀번호는 `{ "method": "password", "value": "..." }`, 간편인증은 `{ "method": "identity_verification" }`. 생략하면 링크의 연락처 확인 사용 |
+| `locale` | string | N | 이메일과 서명 화면 언어. `ko` 또는 `en` |
+| `attachment_requirements` | array | N | 참여자에게 요청할 파일. 최대 5개 |
 
 **파일 요청**
 
@@ -312,7 +329,7 @@ PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requir
         "status": "signed",
         "signed_at": "2025-01-06T14:30:00Z",
         "security_method": "identity_verification",
-        "mobile_alimtalk_enabled": true,
+        "delivery_channels": ["email", "alimtalk"],
         "locale": "en",
         "email_delivery": {
           "status": "delivered",
@@ -332,7 +349,7 @@ PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requir
         "status": "pending",
         "signed_at": null,
         "security_method": "password",
-        "mobile_alimtalk_enabled": false,
+        "delivery_channels": ["email"],
         "locale": "ko",
         "email_delivery": {
           "status": "bounced",
@@ -363,7 +380,7 @@ PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requir
 }
 ```
 
-`dispatch_mode`가 `external`인 경우, 참여자별 `signing_url`과 `expires_at`을 추가로 확인할 수 있습니다.
+`dispatch_mode`가 `external`인 경우, 참여자별 `signing_urls`와 `expires_at`을 추가로 확인할 수 있습니다.
 
 ---
 
@@ -407,25 +424,14 @@ PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requir
 | title | string | Y | 계약서 제목 |
 | description | string | N | 계약서 설명 |
 | dispatch_mode | string | N | 계약서 전달 방식. 기본 `platform`. `external`이면 스노우싸인이 참여자에게 발송하지 않음 |
-| participants | array | Y | 참여자 목록 (역할 매핑) |
+| participants | array | Y | 위 공통 형식의 참여자 목록 |
 | variables | object | N | 템플릿 변수 값. 텍스트 변수는 문자열, 날짜 변수는 ISO 날짜/연월 문자열, 체크박스 변수는 boolean |
 | signing_order | string | N | 서명 순서 (템플릿 기본값 사용 시 생략) |
 | send_immediately | boolean | N | `true`이면 계약 생성 후 즉시 발송. 기본값 `false` |
 | scheduled_send_at | string | N | 예약 발송 시각. timezone을 포함한 ISO 8601 형식 |
 | message | string | N | 발송 시 참여자에게 전달할 메시지 |
 
-**participants 항목**
-
-| 필드 | 타입 | 필수 | 설명 |
-|------|------|------|------|
-| name | string | Y | 참여자 이름 |
-| email | string 또는 null | 조건부 | 스노우싸인에서 계약 발송시 필수. 직접 발송(`external`)이면 이메일 또는 휴대전화번호 중 하나 필수 |
-| phone | string | 조건부 | 전화번호 확인·간편인증 또는 이메일 없는 직접 발송 참여자이면 필수 |
-| mobile_alimtalk_enabled | boolean | N | 모바일 알림톡 발송 여부. 생략 시 템플릿 역할 정책 사용 |
-| locale | string | N | `ko` 또는 `en`. 생략 시 템플릿 역할 언어 사용 |
-| attachment_requirements | array | N | 생략 시 템플릿 역할 기본값 사용. 지정 시 대체, `[]`이면 제거 |
-| role | string | Y | 템플릿에 정의된 역할명 (예: "근로자", "회사") |
-| security | object | 조건부 | 보통 생략. 템플릿의 비밀번호 인증이 있는 역할에는 `{ "method": "password", "value": "..." }` 필요 |
+`participants[].role`은 템플릿에 정의된 역할명과 일치해야 합니다. `delivery_channels`를 생략하면 역할의 기본 발송 수단 중 입력된 연락처로 보낼 수 있는 수단을 사용합니다. `locale`과 `attachment_requirements`는 생략 시 역할 설정을 따르며, 비밀번호 인증 역할에는 `security.value`를 전달해야 합니다.
 
 **variables 사용법**
 
@@ -472,9 +478,7 @@ PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requir
 #### 자체 문자·알림톡으로 서명 링크 보내기
 
 위 요청에서 `dispatch_mode`를 `external`로 설정합니다.
-참여자 연락처는 `email`, `phone` 중 하나 이상을 입력합니다.
-스노우싸인은 참여자에게 메시지를 보내지 않고 서명 링크를 반환합니다.
-서명 예약 기능은 이용할 수 없습니다.
+참여자 연락처는 `email`, `phone` 중 하나 이상을 입력합니다. 스노우싸인은 입력된 연락처마다 `signing_urls.email` 또는 `signing_urls.phone`을 반환하며 참여자에게 메시지를 보내지 않습니다. 두 연락처를 모두 입력하면 두 링크가 모두 포함됩니다.
 
 **응답 필드 예시**
 
@@ -487,9 +491,13 @@ PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requir
     "participants": [
       {
         "participant_id": "participant-uuid",
+        "email": "hong@example.com",
         "phone": "01012345678",
-        "security_method": "phone",
-        "signing_url": "https://...",
+        "security_method": "email",
+        "signing_urls": {
+          "email": "https://.../sign/token?verify=email",
+          "phone": "https://.../sign/token?verify=phone"
+        },
         "expires_at": "2026-10-05T01:30:00"
       }
     ]
@@ -577,12 +585,10 @@ PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requir
 | dispatch_mode | string | N | 링크 전달 방식. 기본 `platform` |
 | send_immediately | boolean | N | true이면 계약 생성 후 즉시 발송. 기본값 false |
 | scheduled_send_at | string | N | 예약 발송 시각. timezone을 포함한 ISO 8601 형식 |
-| participants | array | Y | 참여자 목록 |
+| participants | array | Y | 위 공통 형식의 참여자 목록 |
 | signature_fields | array | Y | 입력칸/서명칸 위치 목록 |
 | variables | object | N | 변수 필드 값 |
 | integration | object | N | 외부 시스템 자유 metadata |
-
-대부분의 경우 참여자는 `role` 하나로 필드와 매핑할 수 있습니다. 같은 역할명이 2명 이상이면 구분이 모호하므로 `key`와 `role_name`을 명시하세요.
 
 `signature_fields` 좌표는 PDF.js `getViewport({ scale: 1 })` 기준 pixel 좌표입니다. 원점은 페이지 좌상단이며, `page_number`는 1부터 시작합니다.
 
@@ -624,7 +630,7 @@ PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requir
       "email": "hong@example.com",
       "phone": "010-1234-5678",
       "security": { "method": "identity_verification" },
-      "mobile_alimtalk_enabled": false,
+      "delivery_channels": ["email", "alimtalk"],
       "locale": "ko"
     }
   ],
@@ -744,7 +750,7 @@ PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requir
 
 `POST /v1/contracts/{contract_id}/remind`
 
-서명 대기 중인 참여자에게 리마인더 이메일을 발송합니다.
+서명 대기 중인 참여자에게 저장된 이메일·알림톡 수단으로 리마인더를 발송합니다.
 
 **Request Body**
 
@@ -1036,8 +1042,8 @@ PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requir
       "deadline_days": 7,
       "can_create_link_signing": false,
       "signers": [
-        { "role_name": "근로자", "signing_order": 1, "security_method": "easy_cert", "mobile_alimtalk_enabled": true, "locale": "en" },
-        { "role_name": "회사", "signing_order": 2, "security_method": "password", "mobile_alimtalk_enabled": false, "locale": "ko" }
+        { "role_name": "근로자", "signing_order": 1, "security_method": "easy_cert", "delivery_channels": ["email", "alimtalk"], "locale": "en" },
+        { "role_name": "회사", "signing_order": 2, "security_method": "password", "delivery_channels": ["email"], "locale": "ko" }
       ]
     }
   ],
@@ -1072,8 +1078,8 @@ PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requir
     "deadline_days": 7,
     "can_create_link_signing": false,
     "signers": [
-      { "uuid": "signer-uuid-1", "role_name": "근로자", "signing_order": 1, "security_method": "easy_cert", "mobile_alimtalk_enabled": true, "locale": "en" },
-      { "uuid": "signer-uuid-2", "role_name": "회사", "signing_order": 2, "security_method": "password", "mobile_alimtalk_enabled": false, "locale": "ko" }
+      { "uuid": "signer-uuid-1", "role_name": "근로자", "signing_order": 1, "security_method": "easy_cert", "delivery_channels": ["email", "alimtalk"], "locale": "en" },
+      { "uuid": "signer-uuid-2", "role_name": "회사", "signing_order": 2, "security_method": "password", "delivery_channels": ["email"], "locale": "ko" }
     ],
     "signature_fields": [
       {
@@ -1138,7 +1144,7 @@ PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requir
 | 필드 | 설명 |
 |------|------|
 | `signers[].security_method` | `email`, `password`, `easy_cert`. 값이 없으면 `email` |
-| `signers[].mobile_alimtalk_enabled` | 역할 기반 계약의 알림톡 기본값 |
+| `signers[].delivery_channels` | 역할 기반 계약의 기본 발송 수단 |
 | `signers[].locale` | 역할의 기본 이메일·서명 화면 언어 |
 | `signers[].attachment_requirements` | 역할에 저장된 파일 요청 기본값 |
 | `signature_fields` | 변수 필드를 제외한 서명자 입력 필드 |

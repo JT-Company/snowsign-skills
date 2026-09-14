@@ -133,7 +133,7 @@ MCP 서버도 `SNOWSIGN_API_KEY` 환경변수를 사용합니다. 키는 스노�
 | 도구 | 설명 |
 |---|---|
 | `snowsign_list_contracts` | 계약 목록 조회 |
-| `snowsign_get_contract` | 계약 상세, 외부 전달 링크 및 이메일 전달 상태 조회 |
+| `snowsign_get_contract` | 계약 상세, 외부 전달 링크 및 채널별 전달 상태 조회 |
 | `snowsign_send_contract` | 계약 즉시 발송 및 예약 설정·변경·취소 |
 | `snowsign_cancel_contract` | 계약 취소 |
 | `snowsign_get_contract_attachments` | 완료 계약의 제출 파일 목록과 다운로드 URL 조회 |
@@ -150,7 +150,7 @@ MCP 서버도 `SNOWSIGN_API_KEY` 환경변수를 사용합니다. 키는 스노�
 | `snowsign_get_hosted_embed_guide_section` | Hosted Embed 문서 섹션 확인 |
 | `snowsign_get_webhook_guide_section` | Webhook 문서 섹션 확인 |
 
-계약 생성은 템플릿 기반과 PDF 업로드 기반을 모두 지원합니다. 기본 `platform` 계약은 스노우싸인이 이메일로 발송하며 즉시 발송하거나 예약할 수 있습니다. `dispatch_mode: external` 계약은 이메일 또는 국내 휴대전화번호로 참여자를 만들고, 생성 응답이나 계약 상세의 참여자별 `signing_url`을 자체 문자·알림톡으로 전달합니다. PDF 기반 생성은 `snowsign_upload_pdf`의 `upload_id`를 `document_upload_id`로 전달합니다. 참여자나 템플릿 역할에 파일 요청을 설정하면 서명자가 파일을 제출하고, 완료 계약에서 제출 파일을 조회·다운로드할 수 있습니다. 링크서명은 템플릿 상세의 `can_create_link_signing`이 `true`인 템플릿으로 생성하고 반환된 `link_url`을 공유합니다. 일반 계약 목록에는 링크서명 계약이 포함되지 않으므로 링크별 완료 계약 도구로 조회합니다.
+계약 생성은 템플릿 기반과 PDF 업로드 기반을 모두 지원합니다. `platform` 계약은 참여자별 `delivery_channels`에 따라 이메일·알림톡으로 발송하며 즉시 발송하거나 예약할 수 있습니다. `external` 계약은 이메일 또는 국내 휴대전화번호로 참여자를 만들고, 생성 응답이나 계약 상세의 `signing_urls`에서 실제 전달할 연락처의 링크를 선택합니다. PDF 기반 생성은 `snowsign_upload_pdf`의 `upload_id`를 `document_upload_id`로 전달합니다. 참여자나 템플릿 역할에 파일 요청을 설정하면 서명자가 파일을 제출하고, 완료 계약에서 제출 파일을 조회·다운로드할 수 있습니다. 링크서명은 템플릿 상세의 `can_create_link_signing`이 `true`인 템플릿으로 생성하고 반환된 `link_url`을 공유합니다. 일반 계약 목록에는 링크서명 계약이 포함되지 않으므로 링크별 완료 계약 도구로 조회합니다.
 
 API Key는 조직 자격증명입니다. MCP로 만든 계약·템플릿·링크서명은 `전체 업무`에 속하며, 템플릿은 모든 멤버가 사용할 수 있는 항목만 조회·사용합니다. 결재가 필요한 발송은 자동 상신하지 않고 `APPROVAL_REQUIRED`로 중단됩니다.
 

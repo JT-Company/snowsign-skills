@@ -28,10 +28,10 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 
 ### 플랫폼 발송
 
-- `platform` 계약은 모든 참여자의 이메일이 필요하다.
+- `platform` 계약은 참여자별 `delivery_channels`에 필요한 이메일 또는 휴대전화번호가 필요하다.
 - 기본적으로 초안으로 만들며, `send_immediately: true`로 즉시 발송하거나 `scheduled_send_at`으로 예약한다.
 - 예약 시각은 timezone을 포함한 ISO 8601 형식이어야 하며 현재보다 미래이고 계약 마감일보다 앞이어야 한다.
-- 발송 API 성공은 요청 접수다. 실제 전달 문제는 계약 목록·상태의 `email_issue`와 상세의 `participants[].email_delivery`로 확인한다.
+- 발송 API 성공은 요청 접수다. 실제 결과는 상세의 `participants[].email_delivery`와 `alimtalk_delivery`로 확인한다.
 
 ### 자체 채널 전달
 
@@ -39,7 +39,7 @@ allowed-tools: "Read, Grep, Bash(test *), Bash(curl *)"
 - 생성 즉시 활성화되므로 `send_immediately`와 `scheduled_send_at`을 전달하지 않는다.
 - 스노우싸인은 이메일·문자·알림톡을 발송하지 않으며 발송·예약·리마인더 API도 사용하지 않는다.
 - 휴대전화번호가 전달 수단이면 전화번호 확인 방식이 자동 적용된다. `security.method: phone`은 요청에 넣지 않는다.
-- 생성 응답이나 계약 상세의 참여자별 `signing_url`과 `expires_at`을 사용한다. 서명 링크는 해당 참여자에게만 전달하는 민감정보로 취급한다.
+- 생성 응답이나 계약 상세의 참여자별 `signing_urls`와 `expires_at`을 사용한다. 이메일과 전화번호가 모두 있으면 두 링크 중 실제 전달할 연락처의 링크를 선택한다. 서명 링크는 해당 참여자에게만 전달하는 민감정보로 취급한다.
 
 ## 생성 전 검증
 

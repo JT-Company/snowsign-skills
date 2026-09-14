@@ -62,7 +62,7 @@ description: 스노우싸인 Public API, Hosted Embed, 웹훅 연동을 분석·
 - API Key는 조직 자격증명이다. 생성 리소스는 `전체 업무`에 속하고 모든 멤버용 템플릿만 조회·사용한다.
 - 결재가 필요한 발송은 자동 상신하지 않고 `APPROVAL_REQUIRED`를 반환한다.
 - API Key와 Webhook Secret은 코드, 로그, 답변 예시에 노출하지 않는다.
-- `platform` 계약은 참여자 이메일이 필요하며 기본적으로 초안이다. `send_immediately: true`로 즉시 발송하거나 `scheduled_send_at`으로 예약할 수 있다.
+- `platform` 계약은 참여자별 `delivery_channels`에 필요한 이메일 또는 휴대전화번호가 필요하며 기본적으로 초안이다. `send_immediately: true`로 즉시 발송하거나 `scheduled_send_at`으로 예약할 수 있다.
 - `external` 계약은 참여자별 이메일 또는 국내 휴대전화번호가 필요하다. 생성 즉시 활성화되어 서명 링크를 반환하며 스노우싸인은 메시지를 발송하지 않는다.
 - `POST /contracts/{id}/send`는 `scheduled_send_at` 생략 시 즉시 발송, 시각 지정 시 예약 설정·변경, `null` 지정 시 예약 취소다.
 - 링크서명은 API 응답의 `link_url`만 외부에 공유하며 내부 링크 토큰을 저장하거나 노출하지 않는다.
@@ -171,7 +171,7 @@ description: 스노우싸인 Public API, Hosted Embed, 웹훅 연동을 분석·
 - PDF 기반 생성은 `POST /uploads`로 업로드 세션을 만들고 업로드 완료 후 `document_upload_id`를 계약/템플릿 생성 API에 전달한다.
 - PDF 좌표는 PDF.js `getViewport({ scale: 1 })` 기준 pixel 좌표로 설계한다.
 - `participants[].role`은 템플릿의 역할명과 정확히 일치해야 한다.
-- 자체 채널로 링크를 전달하면 `dispatch_mode: external`을 사용하고 생성 응답 또는 계약 상세의 참여자별 `signing_url`과 `expires_at`을 사용한다. 별도 링크 조회 API는 없으며 각 링크는 해당 참여자에게만 전달하는 민감정보다. 전화번호 확인은 연락처에 따라 자동 선택하므로 `security.method: phone`을 요청하지 않는다.
+- 자체 채널로 링크를 전달하면 `dispatch_mode: external`을 사용하고 생성 응답 또는 계약 상세의 참여자별 `signing_urls`와 `expires_at`을 사용한다. 이메일과 전화번호가 모두 있으면 실제 전달할 연락처의 링크를 선택한다. 별도 링크 조회 API는 없으며 각 링크는 해당 참여자에게만 전달하는 민감정보다.
 - external 계약에는 예약·플랫폼 발송·리마인더를 설계하지 않는다.
 - 서명자 언어는 `locale: ko|en`으로 매핑한다. PDF 계약의 기본값은 `ko`이며 템플릿 계약은 생략 시 역할 `locale`을 상속한다.
 - 순차 서명은 참여자별 `order`를 명확히 저장한다.

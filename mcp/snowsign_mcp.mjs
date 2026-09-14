@@ -7,7 +7,7 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 
 const SERVER_NAME = "snowsign";
-const SERVER_VERSION = "0.9.0";
+const SERVER_VERSION = "0.10.0";
 const DEFAULT_BASE_URL = "https://api-snowsign.jtsnowball.com/public/v1";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -16,7 +16,8 @@ const hostedEmbedGuidePath = path.join(repoRoot, "skills", "snowsign-integration
 const webhookGuidePath = path.join(repoRoot, "skills", "snowsign-integration-architect", "references", "webhook-guide.md");
 const SIGNATURE_FIELD_POLICY = "signature_fields는 PDF.js getViewport({ scale: 1 }) 기준 pixel 좌표를 사용합니다. is_required 생략 시 true이며 signature/stamp/name은 항상 true, variable은 항상 false, text/date/checkbox만 false 지정 가능합니다. 같은 참여자의 checkbox 두 개 이상은 selection_group_key/mode/count로 선택 조건을 설정할 수 있습니다. text_align은 left/center/right 중 하나이며 name/text/date 필드와 텍스트/날짜 variable에만 적용됩니다. 날짜 필드/날짜 변수는 date_precision과 date_format_pattern을 사용할 수 있습니다.";
 const SCHEDULE_POLICY = "platform 계약의 scheduled_send_at은 timezone을 포함하고 초·밀리초가 0인 ISO 8601 시각이어야 하며, 현재보다 미래이고 계약 마감일보다 앞이어야 합니다.";
-const EXTERNAL_DISPATCH_POLICY = "dispatch_mode=external이면 스노우싸인이 메시지를 발송하지 않습니다. 참여자마다 email 또는 국내 휴대전화번호가 필요하며 생성 즉시 활성화되어 signing_url이 반환됩니다. phone 보안 수단은 직접 지정하지 말고, send_immediately와 scheduled_send_at은 생략한 뒤 반환된 링크를 자체 채널로 전달하세요.";
+const PLATFORM_DELIVERY_POLICY = "dispatch_mode=platform이면 participants[].delivery_channels로 email, alimtalk 또는 둘 다를 선택합니다. 선택한 채널에 맞는 email 또는 국내 휴대전화번호가 필요합니다. PDF 계약에서 생략하면 email, 템플릿 계약에서 생략하면 역할 기본값 중 제공된 연락처의 채널을 사용합니다.";
+const EXTERNAL_DISPATCH_POLICY = "dispatch_mode=external이면 스노우싸인이 메시지를 발송하지 않습니다. 참여자마다 email 또는 국내 휴대전화번호가 필요하며 생성 즉시 활성화됩니다. participants[].signing_urls는 보유 연락처에 따라 email, phone 링크를 반환하므로 실제 전달할 연락처의 링크를 선택하세요. send_immediately와 scheduled_send_at은 생략합니다.";
 const ATTACHMENT_REQUEST_POLICY = "participants[].attachment_requirements로 서명자별 파일 요청을 최대 5개 지정할 수 있습니다. 템플릿 계약은 생략 시 역할 기본값을 사용하고, 배열을 보내면 대체하며, []이면 제거합니다.";
 
 if (typeof fetch !== "function") {
@@ -328,7 +329,7 @@ const TOOLS = [
   },
   {
     name: "snowsign_get_contract",
-    description: "계약 상세와 참여자 연락처·상태·파일 요청 현황을 조회합니다. external 계약의 participants[].signing_url도 반환하며, 서명 링크는 해당 참여자에게만 전달해야 합니다.",
+    description: "계약 상세와 참여자 상태·연락처·파일 요청을 조회합니다. platform 계약은 email_delivery와 alimtalk_delivery, external 계약은 연락처별 signing_urls를 확인할 수 있습니다.",
     inputSchema: objectSchema({
       contract_id: { type: "string", description: "계약 ID입니다." },
     }, ["contract_id"]),
@@ -371,7 +372,7 @@ const TOOLS = [
     name: "snowsign_create_contract_from_pdf",
     description: "업로드 PDF로 전체 업무 계약을 생성합니다. platform은 초안·즉시 발송·예약을, external은 자체 전달할 참여자별 서명 링크 생성을 지원합니다. 결재가 필요하면 APPROVAL_REQUIRED를 반환합니다.",
     inputSchema: objectSchema({
-      contract: { type: "object", description: `POST /v1/contracts 요청 본문입니다. document_upload_id, participants, signature_fields를 포함합니다. dispatch_mode 기본값은 platform입니다. ${SCHEDULE_POLICY} ${EXTERNAL_DISPATCH_POLICY} ${ATTACHMENT_REQUEST_POLICY} ${SIGNATURE_FIELD_POLICY}` },
+      contract: { type: "object", description: `POST /v1/contracts 요청 본문입니다. document_upload_id, participants, signature_fields를 포함합니다. dispatch_mode 기본값은 platform입니다. ${PLATFORM_DELIVERY_POLICY} ${SCHEDULE_POLICY} ${EXTERNAL_DISPATCH_POLICY} ${ATTACHMENT_REQUEST_POLICY} ${SIGNATURE_FIELD_POLICY}` },
     }, ["contract"]),
   },
   {
@@ -399,7 +400,7 @@ const TOOLS = [
   },
   {
     name: "snowsign_remind_contract",
-    description: "platform 계약 참여자에게 리마인더를 보냅니다. external 계약의 재안내는 자체 발송 채널에서 처리합니다.",
+    description: "platform 계약의 미서명 참여자에게 저장된 이메일·알림톡 채널로 리마인더를 보냅니다. external 계약의 재안내는 자체 채널에서 처리합니다.",
     inputSchema: objectSchema({
       contract_id: { type: "string", description: "계약 ID입니다." },
       message: { type: "string", description: "리마인더 메시지입니다." },
@@ -455,7 +456,7 @@ const TOOLS = [
   },
   {
     name: "snowsign_list_templates",
-    description: "모든 멤버가 사용할 수 있는 스노우싸인 템플릿만 조회합니다. signers[].locale은 역할의 기본 서명 언어입니다.",
+    description: "모든 멤버가 사용할 수 있는 템플릿을 조회합니다. signers[]에서 역할별 기본 발송 채널·보안 방식·언어·파일 요청을 확인할 수 있습니다.",
     inputSchema: objectSchema({
       page: { type: "integer", description: "페이지 번호입니다." },
       per_page: { type: "integer", description: "페이지당 항목 수입니다." },
@@ -463,7 +464,7 @@ const TOOLS = [
   },
   {
     name: "snowsign_get_template",
-    description: "스노우싸인 템플릿 상세 정보를 조회합니다. signers[].security_method와 locale은 역할별 기본값이고 attachment_requirements는 계약에 적용할 파일 요청입니다. variables[].is_required는 항상 false이고, signature_fields[].is_required는 필드 타입별 정책에 따라 정규화됩니다.",
+    description: "템플릿 상세와 역할별 delivery_channels, security_method, locale, attachment_requirements를 조회합니다. variables와 signature_fields도 계약 생성 전에 확인하세요.",
     inputSchema: objectSchema({
       template_id: { type: "string", description: "템플릿 ID입니다." },
     }, ["template_id"]),
@@ -480,7 +481,7 @@ const TOOLS = [
     name: "snowsign_create_template_from_pdf",
     description: "업로드 PDF로 모든 멤버가 사용할 수 있는 전체 업무 템플릿을 생성합니다. 관리 그룹 필드는 전달하지 않습니다.",
     inputSchema: objectSchema({
-      template: { type: "object", description: `POST /v1/templates 요청 본문입니다. document_upload_id, signers, signature_fields를 포함합니다. signers[].attachment_requirements로 역할별 파일 요청을 최대 5개 저장할 수 있습니다. ${SIGNATURE_FIELD_POLICY}` },
+      template: { type: "object", description: `POST /v1/templates 요청 본문입니다. document_upload_id, signers, signature_fields를 포함합니다. signers[].delivery_channels로 역할의 기본 발송 채널을 지정하고 attachment_requirements로 파일 요청을 최대 5개 저장할 수 있습니다. ${SIGNATURE_FIELD_POLICY}` },
     }, ["template"]),
   },
   {
@@ -488,7 +489,7 @@ const TOOLS = [
     description: "모든 멤버가 사용할 수 있는 템플릿으로 전체 업무 계약을 생성합니다. platform은 초안·즉시 발송·예약을, external은 자체 전달할 참여자별 서명 링크 생성을 지원합니다. password 역할에는 method=password와 value를 담은 participants[].security, easy_cert 역할에는 participants[].phone이 필요합니다.",
     inputSchema: objectSchema({
       template_id: { type: "string", description: "템플릿 ID입니다." },
-      contract: { type: "object", description: `POST /v1/templates/{id}/create-contract 요청 본문입니다. dispatch_mode 기본값은 platform입니다. ${SCHEDULE_POLICY} ${EXTERNAL_DISPATCH_POLICY} ${ATTACHMENT_REQUEST_POLICY}` },
+      contract: { type: "object", description: `POST /v1/templates/{id}/create-contract 요청 본문입니다. dispatch_mode 기본값은 platform입니다. ${PLATFORM_DELIVERY_POLICY} ${SCHEDULE_POLICY} ${EXTERNAL_DISPATCH_POLICY} ${ATTACHMENT_REQUEST_POLICY}` },
     }, ["template_id", "contract"]),
   },
   {
@@ -800,7 +801,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "스노우싸인 MCP 도구로 일반 계약, 자체 채널로 전달할 external 계약과 링크서명을 조회·운영하세요. API Key는 조직 자격증명이며 생성 리소스는 전체 업무에 속하고 템플릿은 모든 멤버가 사용할 수 있는 항목만 사용합니다. 상태 변경과 계약 생성은 실행 전 사용자 의도를 확인하세요. platform 계약은 이메일이 필요하고 초안·즉시 발송·예약을 지원합니다. external 계약은 참여자마다 이메일 또는 국내 휴대전화번호를 받고 send_immediately와 scheduled_send_at을 생략해 생성하세요. 생성 응답이나 계약 상세의 participants[].signing_url을 자체 문자·알림톡으로 전달하며 스노우싸인 발송·예약·리마인더 도구는 사용하지 않습니다. 파일 요청은 PDF 계약 참여자 또는 템플릿 역할에 설정하고, 제출 파일은 완료 계약에서만 조회·다운로드하세요. APPROVAL_REQUIRED이면 자동 상신하지 말고 내부 앱에서 결재가 필요하다고 안내하세요. 결과에서는 dispatch_mode, approval_status, scheduled_send_at, schedule_failure_code를 확인하세요. 링크서명 결과에서는 link_url만 공유하고, 일반 계약 목록에는 링크서명 계약이 포함되지 않음을 기억하세요.",
+            text: "스노우싸인 MCP 도구로 일반 계약, external 계약과 링크서명을 운영하세요. 생성·발송·상태 변경은 사용자 의도가 확인된 범위에서만 실행합니다. platform 계약은 참여자별 delivery_channels에 필요한 연락처로 발송하고, external 계약은 스노우싸인이 발송하지 않으므로 signing_urls에서 실제 전달할 연락처의 링크를 선택합니다. 정확한 요청 형식은 API 참조 도구로 확인하세요. APPROVAL_REQUIRED가 반환되면 자동 상신하지 않습니다. 제출 파일은 완료 계약에서 조회하며, 링크서명은 link_url만 공유하고 생성된 계약은 링크별 완료 계약 도구로 조회합니다.",
           },
         }],
       };
@@ -813,7 +814,7 @@ async function handle(method, params = {}) {
           role: "user",
           content: {
             type: "text",
-            text: "snowsign_get_api_reference_section 도구로 필요한 API 섹션을 확인한 뒤 연동 코드를 작성하세요. API Key는 조직 자격증명이며 생성 리소스는 관리 그룹 입력 없이 전체 업무에 속합니다. 템플릿은 모든 멤버가 사용할 수 있는 항목만 조회·사용하고, 결재가 필요한 발송은 APPROVAL_REQUIRED로 중단됩니다. 외부 PDF는 업로드 후 document_upload_id로 전달하고 signature_fields는 PDF.js scale 1 좌표를 씁니다. 파일 요청은 participants[] 또는 signers[]의 attachment_requirements로 설정하고 완료 계약의 /attachments에서 제출 파일을 회수합니다. platform 계약은 참여자 이메일이 필요하고 초안·즉시 발송·예약을 지원합니다. 자체 문자·알림톡으로 링크를 보낼 때는 dispatch_mode=external과 참여자 이메일 또는 국내 휴대전화번호를 전달합니다. external 계약은 생성 즉시 활성화되고 participants[].signing_url을 반환하며 예약·플랫폼 발송·리마인더를 사용하지 않습니다. 계약 응답의 dispatch_mode, approval_status, scheduled_send_at, schedule_failure_code를 반영하고 external 링크는 생성 응답 또는 계약 상세에서 확인하세요. 링크서명 완료 계약은 일반 계약 목록과 분리해 조회합니다.",
+            text: "snowsign_get_api_reference_section으로 해당 API의 현재 요청·응답을 확인한 뒤 연동하세요. API Key는 조직 자격증명이며 생성 리소스는 전체 업무에 속합니다. platform 계약은 delivery_channels에 맞는 연락처로 발송하고, external 계약은 이메일 또는 국내 휴대전화번호를 받아 즉시 활성화한 뒤 연락처별 signing_urls를 반환합니다. PDF는 업로드 후 document_upload_id를 사용하고 필드 좌표는 PDF.js scale 1 기준입니다. 파일 요청은 attachment_requirements로 설정하고 완료 계약의 attachments API로 회수합니다. APPROVAL_REQUIRED와 계약의 전달·예약 상태를 처리하며, 링크서명 완료 계약은 일반 계약 목록과 분리해 조회합니다.",
           },
         }],
       };
