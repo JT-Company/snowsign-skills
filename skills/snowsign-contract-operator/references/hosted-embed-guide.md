@@ -172,9 +172,10 @@ Content-Type: application/json
 | `snowsign.embed.ready` | iframe 초기화 완료 |
 | `snowsign.embed.contract_created` | 계약 초안 생성 완료 |
 | `snowsign.embed.contract_sent` | 계약 발송 완료 |
-| `snowsign.embed.completed` | 템플릿 단건/대량 처리 완료 |
+| `snowsign.embed.bulk_sent` | 대량 발송 처리 완료. `snowsign.embed.completed`도 함께 전달 |
+| `snowsign.embed.completed` | 대량 처리 완료 |
 | `snowsign.embed.cancelled` | 사용자가 취소 |
-| `snowsign.embed.error` | 세션 만료, 권한, 쿼터, 구독 등 오류 |
+| `snowsign.embed.error` | iframe 초기화 실패. payload에는 `message` 포함 |
 
 ### 수신 코드 예시
 
@@ -280,7 +281,7 @@ PDF 업로드·AI 작성 화면에서는 회사 도장을 추가할 수 없습�
 
 ## 오류 처리
 
-iframe 오류는 `snowsign.embed.error` 이벤트로 전달됩니다.
+iframe 초기화 실패는 `snowsign.embed.error` 이벤트로 전달되며 payload에는 `message`만 포함됩니다. 계약 생성·발송 중 오류는 iframe 내부에 표시되고 이 이벤트로 전달되지 않습니다.
 
 권장 처리:
 

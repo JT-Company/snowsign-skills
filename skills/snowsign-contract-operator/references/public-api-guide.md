@@ -425,9 +425,9 @@ PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requir
 | description | string | N | 계약서 설명 |
 | dispatch_mode | string | N | 계약서 전달 방식. 기본 `platform`. `external`이면 스노우싸인이 참여자에게 발송하지 않음 |
 | participants | array | Y | 위 공통 형식의 참여자 목록 |
-| variables | object | N | 템플릿 변수 값. 텍스트 변수는 문자열, 날짜 변수는 ISO 날짜/연월 문자열, 체크박스 변수는 boolean |
+| variables | object | N | 템플릿 변수 값. 텍스트 변수는 문자열, 날짜 변수는 ISO 날짜/연월 문자열, 체크박스 변수는 boolean, 주소 변수는 주소 객체 |
 | signing_order | string | N | 서명 순서 (템플릿 기본값 사용 시 생략) |
-| send_immediately | boolean | N | `true`이면 계약 생성 후 즉시 발송. 기본값 `false` |
+| send_immediately | boolean | N | `platform`은 기본값 `false`, `true`이면 즉시 발송. `external`은 생략하거나 `true`만 지정 가능 |
 | scheduled_send_at | string | N | 예약 발송 시각. timezone을 포함한 ISO 8601 형식 |
 | message | string | N | 발송 시 참여자에게 전달할 메시지 |
 
@@ -439,6 +439,7 @@ PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requir
 - 텍스트 변수는 `variables` 객체에 `{ "변수명": "치환할 값" }` 형식으로 전달합니다.
 - 날짜 변수는 `date_precision`이 `day`이면 `YYYY-MM-DD`, `month`이면 `YYYY-MM` 형식으로 전달합니다.
 - 체크박스 변수는 `{ "변수명": true }` 또는 `{ "변수명": false }`로 전달합니다.
+- 주소 변수는 `{ "address_line1": "주소", "address_line2": "상세주소", "postal_code": "우편번호" }` 객체로 전달합니다. 주소만 문자열로 전달할 수도 있습니다.
 
 **Request 예시**
 
@@ -574,7 +575,7 @@ PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requir
 
 `POST /v1/contracts`
 
-업로드 PDF와 필드 위치 정보로 계약서를 생성합니다. 즉시 발송하거나 예약하지 않으면 초안으로 생성됩니다.
+업로드 PDF와 필드 위치 정보로 계약서를 생성합니다. 기본 전달 방식인 `platform`에서는 즉시 발송하거나 예약하지 않으면 초안으로 생성됩니다. `external`은 생성과 동시에 활성화되며 초안 생성과 예약 발송을 지원하지 않습니다.
 
 **Request Body 주요 필드**
 
@@ -583,7 +584,7 @@ PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requir
 | title | string | Y | 계약서 제목 |
 | document_upload_id | string | Y | 업로드 세션 ID |
 | dispatch_mode | string | N | 링크 전달 방식. 기본 `platform` |
-| send_immediately | boolean | N | true이면 계약 생성 후 즉시 발송. 기본값 false |
+| send_immediately | boolean | N | `platform`은 기본값 `false`, `true`이면 즉시 발송. `external`은 생략하거나 `true`만 지정 가능 |
 | scheduled_send_at | string | N | 예약 발송 시각. timezone을 포함한 ISO 8601 형식 |
 | participants | array | Y | 위 공통 형식의 참여자 목록 |
 | signature_fields | array | Y | 입력칸/서명칸 위치 목록 |
@@ -599,19 +600,21 @@ PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requir
 | 필드 | 타입 | 필수 | 설명 |
 |------|------|------|------|
 | participant 또는 participant_key | string | 조건부 | 참여자 역할명 또는 참여자 key. `type: "variable"`에는 사용하지 않습니다. |
-| type | string | Y | `signature`, `stamp`, `name`, `text`, `date`, `checkbox`, `variable` |
+| type | string | Y | `signature`, `stamp`, `name`, `text`, `date`, `checkbox`, `address`, `variable` |
 | page_number | integer | Y | PDF 페이지 번호. 1부터 시작 |
 | position_x / position_y | number | Y | PDF.js pixel 좌표 |
 | width / height | number | Y | 입력칸 크기 |
 | position_unit | string | N | `pixel`만 지원 |
-| is_required | boolean | N | 필수 입력 여부. 생략 시 true. `signature`/`stamp`/`name`은 항상 true, `variable`은 false, `text`/`date`/`checkbox`만 false 지정 가능 |
-| font_size | integer | N | 텍스트/날짜/변수 텍스트 PDF 표시 폰트 크기. 1~72 |
-| text_align | string | N | 텍스트 정렬. `left`, `center`, `right` 중 하나. `name`, `text`, `date`, 텍스트/날짜 `variable`에 적용되며 서명/체크박스에는 저장되지 않습니다. |
+| is_required | boolean | N | 필수 입력 여부. 생략 시 true. `signature`/`stamp`/`name`은 항상 true, `variable`은 false, `text`/`date`/`checkbox`/`address`만 false 지정 가능 |
+| font_size | integer | N | 텍스트/날짜/주소/변수 텍스트 PDF 표시 폰트 크기. 1~72 |
+| text_align | string | N | 텍스트 정렬. `left`, `center`, `right` 중 하나. `name`, `text`, `date`, `address`, 텍스트/날짜/주소 `variable`에 적용되며 서명/체크박스에는 저장되지 않습니다. |
 | placeholder_text | string | N | 텍스트 입력 안내 문구. 날짜 입력칸에는 저장하지 않습니다. |
+| label | string | N | 100자 이하. 주소 입력칸은 주소 이름(`address_display_part` 참고), 그 밖의 입력칸은 내부 식별명 |
 | variable_name | string | 조건부 | `type: "variable"`일 때 필수 |
-| variable_value_type | string | N | 변수 값 타입. `text`, `checkbox`, `date` 중 하나. 기본값 `text` |
+| variable_value_type | string | N | 변수 값 타입. `text`, `checkbox`, `date`, `address` 중 하나. 기본값 `text` |
 | date_precision | string | N | 날짜 입력/날짜 변수 정밀도. `day` 또는 `month` |
 | date_format_pattern | string | N | 날짜 표시 형식. 예: `YYYY년 MM월 DD일`, `YYYY-MM-DD`, `YYYY/MM` |
+| address_display_part | string | N | 주소 입력칸·주소 변수의 표시 항목. `full`(기본, 주소와 상세주소)·`address_line1`·`address_line2`·`postal_code`. 같은 이름의 주소 변수와, 같은 참여자이면서 `label`이 같은 주소 입력칸은 값을 공유합니다(`label`이 없으면 참여자의 기본 주소). |
 | fill_background | boolean | N | 날짜/변수 표시 시 PDF 배경을 흰색으로 가릴지 여부 |
 
 **Request 예시**
@@ -685,7 +688,7 @@ PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requir
 }
 ```
 
-`send_immediately=true`와 `scheduled_send_at`은 함께 지정할 수 없습니다. 둘 다 생략하면 초안으로 생성됩니다.
+`send_immediately=true`와 `scheduled_send_at` 예약 시각은 함께 지정할 수 없습니다. `platform`에서는 둘 다 생략하면 초안으로 생성됩니다. `external`에서는 `send_immediately`를 생략하거나 `true`로 지정하고, 예약 발송 시각을 지정할 수 없습니다.
 
 ### 계약서 발송
 
@@ -960,7 +963,9 @@ PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requir
 
 대부분의 경우 템플릿 역할은 문자열 배열로 만들 수 있습니다. 역할 언어를 지정하려면 `{ "role": "...", "locale": "ko|en" }` 형식을 사용하며 기본값은 `ko`입니다. 같은 역할명이 중복되면 `key`와 `role_name`을 명시하세요.
 
-`signature_fields` 항목은 PDF 계약서 생성 API와 동일하게 `is_required`, `text_align`, `font_size`, 날짜 메타데이터, 변수 메타데이터를 사용할 수 있습니다. `is_required`는 `text`/`date`/`checkbox`에서만 false 지정 가능하며, `text_align`은 `left`, `center`, `right` 중 하나이고 `name`, `text`, `date`, 텍스트/날짜 `variable`에 적용됩니다.
+`signature_fields` 항목은 PDF 계약서 생성 API와 동일하게 `is_required`, `text_align`, `font_size`, 날짜 메타데이터, 변수 메타데이터를 사용할 수 있습니다. `is_required`는 `text`/`date`/`checkbox`/`address`에서만 false 지정 가능하며, `text_align`은 `left`, `center`, `right` 중 하나이고 `name`, `text`, `date`, `address`, 텍스트/날짜/주소 `variable`에 적용됩니다.
+
+템플릿은 발송자 체크박스 변수 그룹도 별도로 지원합니다. `type: "variable"`, `variable_value_type: "checkbox"`인 고유 `variable_name` 두 개 이상을 묶으며, 같은 변수의 반복 배치는 한 개로 집계합니다. 변수와 서명자 체크박스는 같은 그룹에 묶을 수 없습니다. 이 그룹은 전달한 변수 값으로 검증하며 서명자의 완료 조건과 구분합니다.
 
 **Request 예시**
 
@@ -1147,12 +1152,12 @@ PDF 계약의 `participants[]`와 템플릿의 `signers[]`에 `attachment_requir
 | `signers[].delivery_channels` | 역할 기반 계약의 기본 발송 수단 |
 | `signers[].locale` | 역할의 기본 이메일·서명 화면 언어 |
 | `signers[].attachment_requirements` | 역할에 저장된 파일 요청 기본값 |
-| `signature_fields` | 변수 필드를 제외한 서명자 입력 필드 |
-| `signature_fields[].is_required` | 서명·인감·이름은 항상 `true`; 텍스트·날짜·체크박스는 저장값 |
+| `signature_fields` | 변수를 제외한 필드. 서명자 입력 필드와 회사 도장(`organization_seal`) 포함 |
+| `signature_fields[].is_required` | 서명·인감·이름은 항상 `true`; 텍스트·날짜·체크박스·주소는 저장값 |
 | `variables` | 동일한 변수명을 하나로 합친 변수 목록 |
 | `variables[].is_required` | 항상 `false` |
 | `signature_fields[].text_align`, `variables[].text_align` | `left`, `center`, `right`, `null`; 정렬 대상이 아니면 `null` |
-| `variables[].value_type` | `text`, `checkbox`, `date`. 날짜는 날짜 표시 메타 포함 |
+| `variables[].value_type` | `text`, `checkbox`, `date`, `address`. 날짜는 날짜 표시 메타 포함 |
 | `can_create_link_signing` | PDF가 있고 서명자 역할이 정확히 하나이면 `true` |
 
 ---

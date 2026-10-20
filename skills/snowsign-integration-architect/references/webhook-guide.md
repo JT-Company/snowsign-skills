@@ -231,7 +231,7 @@
 }
 ```
 
-> `download_url`은 서명된 계약서 PDF의 1시간 유효 임시 URL입니다.
+> `download_url`은 서명된 계약서 PDF의 1시간 유효 임시 URL입니다. 완료 PDF가 없거나 URL 생성에 실패하면 null일 수 있습니다. 필요한 경우 Public API에서 새 URL을 조회합니다.
 
 ---
 

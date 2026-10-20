@@ -14,7 +14,8 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const apiGuidePath = path.join(repoRoot, "skills", "snowsign-integration-architect", "references", "public-api-guide.md");
 const hostedEmbedGuidePath = path.join(repoRoot, "skills", "snowsign-integration-architect", "references", "hosted-embed-guide.md");
 const webhookGuidePath = path.join(repoRoot, "skills", "snowsign-integration-architect", "references", "webhook-guide.md");
-const SIGNATURE_FIELD_POLICY = "signature_fields는 PDF.js getViewport({ scale: 1 }) 기준 pixel 좌표를 사용합니다. is_required 생략 시 true이며 signature/stamp/name은 항상 true, variable은 항상 false, text/date/checkbox만 false 지정 가능합니다. 같은 참여자의 checkbox 두 개 이상은 selection_group_key/mode/count로 선택 조건을 설정할 수 있습니다. text_align은 left/center/right 중 하나이며 name/text/date 필드와 텍스트/날짜 variable에만 적용됩니다. 날짜 필드/날짜 변수는 date_precision과 date_format_pattern을 사용할 수 있습니다.";
+const SIGNATURE_FIELD_POLICY = "signature_fields는 PDF.js getViewport({ scale: 1 }) 기준 pixel 좌표를 사용합니다. is_required 생략 시 true이며 signature/stamp/name은 항상 true, variable은 항상 false, text/date/checkbox/address만 false 지정 가능합니다. 같은 참여자의 checkbox 두 개 이상은 selection_group_key/mode/count로 선택 조건을 설정할 수 있습니다. text_align은 left/center/right 중 하나이며 name/text/date/address 필드와 텍스트/날짜/주소 variable에만 적용됩니다. 날짜 필드/날짜 변수는 date_precision과 date_format_pattern을 사용할 수 있습니다. 주소 필드/주소 변수는 address_display_part(full·address_line1·address_line2·postal_code)로 표시 항목을 고르며, 같은 이름의 주소 변수와 같은 참여자·같은 label의 주소 필드는 값 하나를 공유합니다.";
+const VARIABLE_VALUE_POLICY = "variables는 변수명별 값입니다. 텍스트는 문자열, 날짜는 YYYY-MM-DD 또는 YYYY-MM, 체크박스는 boolean, 주소는 { address_line1, address_line2, postal_code } 객체입니다.";
 const SCHEDULE_POLICY = "platform 계약의 scheduled_send_at은 timezone을 포함하고 초·밀리초가 0인 ISO 8601 시각이어야 하며, 현재보다 미래이고 계약 마감일보다 앞이어야 합니다.";
 const PLATFORM_DELIVERY_POLICY = "dispatch_mode=platform이면 participants[].delivery_channels로 email, alimtalk 또는 둘 다를 선택합니다. 선택한 채널에 맞는 email 또는 국내 휴대전화번호가 필요합니다. PDF 계약에서 생략하면 email, 템플릿 계약에서 생략하면 역할 기본값 중 제공된 연락처의 채널을 사용합니다.";
 const EXTERNAL_DISPATCH_POLICY = "dispatch_mode=external이면 스노우싸인이 메시지를 발송하지 않습니다. 참여자마다 email 또는 국내 휴대전화번호가 필요하며 생성 즉시 활성화됩니다. participants[].signing_urls는 보유 연락처에 따라 email, phone 링크를 반환하므로 실제 전달할 연락처의 링크를 선택하세요. send_immediately와 scheduled_send_at은 생략합니다.";
@@ -489,7 +490,7 @@ const TOOLS = [
     description: "모든 멤버가 사용할 수 있는 템플릿으로 전체 업무 계약을 생성합니다. platform은 초안·즉시 발송·예약을, external은 자체 전달할 참여자별 서명 링크 생성을 지원합니다. password 역할에는 method=password와 value를 담은 participants[].security, easy_cert 역할에는 participants[].phone이 필요합니다.",
     inputSchema: objectSchema({
       template_id: { type: "string", description: "템플릿 ID입니다." },
-      contract: { type: "object", description: `POST /v1/templates/{id}/create-contract 요청 본문입니다. dispatch_mode 기본값은 platform입니다. ${PLATFORM_DELIVERY_POLICY} ${SCHEDULE_POLICY} ${EXTERNAL_DISPATCH_POLICY} ${ATTACHMENT_REQUEST_POLICY}` },
+      contract: { type: "object", description: `POST /v1/templates/{id}/create-contract 요청 본문입니다. dispatch_mode 기본값은 platform입니다. ${PLATFORM_DELIVERY_POLICY} ${SCHEDULE_POLICY} ${EXTERNAL_DISPATCH_POLICY} ${ATTACHMENT_REQUEST_POLICY} ${VARIABLE_VALUE_POLICY}` },
     }, ["template_id", "contract"]),
   },
   {
@@ -502,7 +503,7 @@ const TOOLS = [
       description: { type: "string", description: "서명자 안내 문구입니다." },
       expires_at: { type: "string", format: "date-time", description: "UTC ISO 8601 만료 일시입니다. 예: 2026-12-31T14:59:59Z" },
       require_identity_verification: { type: "boolean", description: "휴대폰 간편인증 요구 여부입니다. 기본값은 false입니다." },
-      variables: { type: "object", description: "생성되는 계약에 공통 적용할 템플릿 변수 값입니다." },
+      variables: { type: "object", description: `생성되는 계약에 공통 적용할 템플릿 변수 값입니다. ${VARIABLE_VALUE_POLICY}` },
     }, ["template_uuid", "name", "max_submissions"]),
   },
   {
